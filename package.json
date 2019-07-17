@@ -1,14 +1,14 @@
 {
-  "name": "@agile-central-technical-services/utils-ancestor-pi-app-filter",
-  "version": "2.3.2",
-  "description": "A portfolio item ancestor filter plugin for Technical Services apps",
+  "name": "@customagile/ancestor-pi-multi-level-pi-app-filter",
+  "version": "1.0.0",
+  "description": "A portfolio item ancestor filter and multi-level PI filter plugin",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RallyTechServices/utils-ancestor-pi-app-filter.git"
+    "url": "git+https://github.com/CustomAgile/utils-ancestor-pi-app-filter.git"
   },
   "keywords": [
     "rally",
@@ -22,11 +22,11 @@
     "filter",
     "ancestor"
   ],
-  "author": "Tyr Johanson",
-  "license": "ISC",
+  "author": "Custom Agile",
+  "license": "MIT",
   "bugs": {
-    "url": "https://github.com/RallyTechServices/utils-ancestor-pi-app-filter/issues"
+    "url": "https://github.com/CustomAgile/utils-ancestor-pi-app-filter/issues"
   },
-  "homepage": "https://github.com/RallyTechServices/utils-ancestor-pi-app-filter#readme",
+  "homepage": "https://github.com/CustomAgile/utils-ancestor-pi-app-filter#readme",
   "dependencies": {}
 }

@@ -7,7 +7,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
     extend: 'Ext.Component',
 
     statics: {
-        RENDER_AREA_ID: 'utils-ancestor-pi-app-filter'
+        RENDER_AREA_ID: 'utils-ancestor-pi-app-filter',
+        PANEL_RENDER_AREA_ID: 'multi-level-pi-app-filter-panel'
     },
 
     config: {
@@ -16,6 +17,24 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * The id of the component where the plugin will render its controls
          */
         renderAreaId: 'utils-ancestor-pi-app-filter',
+
+        /**
+         * @cfg {String}
+         * The id of the component where the filter button will render itself
+         */
+        btnRenderAreaId: 'utils-ancestor-pi-app-filter',
+
+        /**
+         * @cfg {String}
+         * The id of the component where the tabbed filter panel will render itself
+         */
+        panelRenderAreaId: 'multi-level-pi-app-filter-panel',
+
+        /**
+         * @cfg {Boolean}
+         * Set to false to prevent app from displaying a multi-level PI filter
+         */
+        displayMultiLevelFilter: true,
 
         /**
          * @cfg {Boolean}
@@ -36,6 +55,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * Config applied to the app settings components
          */
         settingsConfig: {},
+
+        /**
+         * @cfg {Object}
+         * Fetch list for PI Selector
+         */
+        defaultFetch: true,
 
         /**
          * @cfg {String}
@@ -78,7 +103,25 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Number}
          * Minimum width for single row layout
          */
-        singleRowMinWidth: 840
+        singleRowMinWidth: 840,
+
+        /**
+         * @cfg {Array}
+         * Field list for multi-level filter panel
+         */
+        defaultFilterFields: ['ArtifactSearch', 'Owner'],
+
+        /**
+         * @cfg {Boolean}
+         * Set to false to show filters on load
+         */
+        filtersHidden: true,
+
+        /**
+         * @cfg {Boolean}
+         * Set to true to hide advanced filters on load
+         */
+        advancedFilterCollapsed: false
     },
 
     portfolioItemTypes: [],
@@ -88,18 +131,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
     changeSubscribers: [],
     publishedValue: {},
 
-    constructor: function(config) {
+    constructor: function (config) {
         this.callParent(arguments);
         this._setupPubSub();
         Ext.tip.QuickTipManager.init();
     },
 
-    initComponent: function() {
+    initComponent: function () {
         this.callParent(arguments);
-        this.addEvents('ready', 'select');
+        this.addEvents('ready', 'select', 'change');
     },
 
-    init: function(cmp) {
+    init: function (cmp) {
         this.cmp = cmp;
 
         this.cmp.on('resize', this._onCmpResize, this);
@@ -107,9 +150,15 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // Get the area where plugin controls will render
         this.renderArea = this.cmp.down('#' + this.renderAreaId);
 
+        // Get the area where filter button will render
+        this.btnRenderArea = this.cmp.down('#' + this.btnRenderAreaId);
+
+        // Get the area where tabbed filter panel will render
+        this.panelRenderArea = this.cmp.down('#' + this.panelRenderAreaId);
+
         // Extend app settings fields
         var cmpGetSettingsFields = this.cmp.getSettingsFields;
-        this.cmp.getSettingsFields = function() {
+        this.cmp.getSettingsFields = function () {
             return this._getSettingsFields(cmpGetSettingsFields.apply(cmp, arguments));
         }.bind(this);
 
@@ -117,71 +166,126 @@ Ext.define('Utils.AncestorPiAppFilter', {
         var appDefaults = this.cmp.defaultSettings;
         appDefaults['Utils.AncestorPiAppFilter.enableAncestorPiFilter2'] = false;
         appDefaults['Utils.AncestorPiAppFilter.projectScope'] = 'current';
+        appDefaults['Utils.AncestorPiAppFilter.enableMultiLevelPiFilter'] = true;
         this.cmp.setDefaultSettings(appDefaults);
+
+        Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
+            // We don't want chevrons in the tab panel
+            _alignChevron: function () {
+                if (this.chevron) { this.chevron.hide(); }
+            }
+        });
 
         // Add the control components then fire ready
         this._addControlCmp().then({
             scope: this,
-            success: function() {
-                this._setReady()
+            success: function () {
+                this._addFilters().then(
+                    function () {
+                        this._setReady();
+                    }.bind(this),
+                    function (error) {
+                        Rally.ui.notify.Notifier.showError({ message: error });
+                    });
             }
         });
     },
 
-    notifySubscribers: function() {
+    notifySubscribers: function () {
         var data = this._getValue();
-        _.each(this.changeSubscribers, function(subscriberName) {
+        _.each(this.changeSubscribers, function (subscriberName) {
             this.publish(subscriberName, data);
         }, this);
     },
 
-    // Return a proimse that resolves to a filter (or null) after both:
-    // - the component has finished restoring its state and has an initial value.
-    // - portfolio item types have been loaded
-    getFilterForType: function(type) {
+    getAncestorFilterForType: function (type) {
         var filter;
-
         var modelName = type.toLowerCase();
         var currentValues = this._getValue();
+
         if (currentValues.piTypePath) {
-            var selectedPiTypePath = currentValues.piTypePath
+            var selectedPiTypePath = currentValues.piTypePath;
             var selectedRecord = currentValues.isPiSelected;
             var selectedPi = currentValues.pi;
             var pisAbove = this._piTypeAncestors(modelName, selectedPiTypePath);
-            if (selectedRecord && selectedPi != null && pisAbove != null) {
-                var property;
-                property = this._propertyPrefix(modelName, pisAbove);
+            if (selectedRecord && selectedPi !== null && pisAbove !== null) {
+                var property = this._propertyPrefix(modelName, pisAbove);
                 if (property) {
                     filter = new Rally.data.wsapi.Filter({
                         property: property,
                         value: selectedPi
                     });
-
                 }
             }
-            else if (selectedPi != null) {
+            else if (selectedPi !== null) {
                 // Filter out any items of this type because the ancestor pi filter is
                 // enabled, but this type doesn't have any pi ancestor types
                 filter = new Rally.data.wsapi.Filter({
                     property: 'ObjectID',
                     value: 0
-                })
+                });
             }
         }
 
         return filter;
     },
 
-    getIgnoreProjectScope: function() {
+    getFiltersForType: function (type) {
+        let ancestorFilter = this.getAncestorFilterForType(type);
+        let filters = ancestorFilter ? [ancestorFilter] : [];
+        let modelName = type.toLowerCase();
+        let multiLevelFilters = this.getMultiLevelFilters();
+
+        _.each(multiLevelFilters, function (val, key) {
+            if (modelName === key.toLowerCase()) {
+                filters = filters.concat(val);
+            }
+            else {
+                let pisAbove = this._piTypeAncestors(modelName, key);
+
+                if (val.length && pisAbove !== null) {
+                    let property = this._propertyPrefix(modelName, pisAbove);
+                    if (property) {
+                        _.each(val, function (filter) {
+                            filters.push(new Rally.data.wsapi.Filter({
+                                property: `${property}.${filter.property}`,
+                                operator: filter.operator,
+                                value: filter.value
+                            }));
+                        }.bind(this));
+                    }
+                }
+            }
+        }.bind(this));
+
+        return filters;
+    },
+
+    getMultiLevelFilters: function () {
+        var filters = {};
+
+        _.each(this.filterControls, function (filterControl) {
+            let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
+            filters[typeName] = filterControl.inlineFilterButton.getFilters();
+        });
+
+        return filters;
+    },
+
+    getSelectedPiRecord: function () {
+        return this._getValue().piRecord;
+    },
+
+    getIgnoreProjectScope: function () {
         return this._getValue().ignoreProjectScope;
     },
 
-    _setupPubSub: function() {
+    _setupPubSub: function () {
         if (this.publisher) {
-            this.subscribe(this, 'registerChangeSubscriber', function(subscriberName) {
+            this.subscribe(this, 'registerChangeSubscriber', function (subscriberName) {
                 // Register new unique subscribers
                 if (!_.contains(this.changeSubscribers, subscriberName)) {
-                    this.changeSubscribers.push(subscriberName)
+                    this.changeSubscribers.push(subscriberName);
                 }
                 this.publish(subscriberName, this._getValue());
             }, this);
@@ -191,7 +295,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         else {
             this.subscriberEventName = Rally.getApp().getAppId() + this.$className;
             // Subscribe to a channel dedicated to this app
-            this.subscribe(this, this.subscriberEventName, function(data) {
+            this.subscribe(this, this.subscriberEventName, function (data) {
                 if (this.intervalTimer) {
                     clearInterval(this.intervalTimer);
                     delete this.intervalTimer;
@@ -205,16 +309,16 @@ Ext.define('Utils.AncestorPiAppFilter', {
             }, this);
             // Attempt to register with a publisher (if one exists)
             this.publish('registerChangeSubscriber', this.subscriberEventName);
-            this.intervalTimer = setInterval(function() {
+            this.intervalTimer = setInterval(function () {
                 this.publish('registerChangeSubscriber', this.subscriberEventName);
             }.bind(this), 500);
-            this.subscribe(this, 'reRegisterChangeSubscriber', function() {
+            this.subscribe(this, 'reRegisterChangeSubscriber', function () {
                 this.publish('registerChangeSubscriber', this.subscriberEventName);
             }, this);
         }
     },
 
-    _getValue: function() {
+    _getValue: function () {
         var result = {};
         if (this._isSubscriber()) {
             result = this.publishedValue || {};
@@ -229,7 +333,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     _.merge(result, {
                         piTypePath: selectedPiTypePath,
                         isPiSelected: !!selectedRecord,
-                        pi: selectedPi
+                        pi: selectedPi,
+                        piRecord: selectedRecord
                     });
                 }
             }
@@ -238,77 +343,83 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return result;
     },
 
-    _setReady: function() {
+    _setReady: function () {
         this.ready = true;
         this.fireEvent('ready', this);
     },
 
-    _onSelect: function() {
+    _onSelect: function () {
         if (this.ready) {
             this.fireEvent('select', this);
         }
     },
 
-    _getSettingsFields: function(fields) {
+    _getSettingsFields: function (fields) {
         var currentSettings = Rally.getApp().getSettings();
         if (!currentSettings.hasOwnProperty('Utils.AncestorPiAppFilter.projectScope')) {
-            currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user'
+            currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user';
         }
         var pluginSettingsFields = [{
-                xtype: 'rallycheckboxfield',
-                id: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
-                name: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
-                fieldLabel: 'Filter artifacts by ancestor portfolio item',
+            xtype: 'rallycheckboxfield',
+            id: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
+            name: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
+            fieldLabel: 'Filter artifacts by ancestor portfolio item',
+        }, {
+            xtype: 'rallyportfolioitemtypecombobox',
+            id: 'Utils.AncestorPiAppFilter.defaultPiType',
+            name: 'Utils.AncestorPiAppFilter.defaultPiType',
+            fieldLabel: "Default Portfolio Item type",
+            valueField: 'TypePath',
+            allowNoEntry: false,
+            defaultSelectionPosition: 'last',
+            // Disable the preference enabled combo box plugin so that this control value is app specific
+            plugins: [],
+        },
+        {
+            xtype: 'radiogroup',
+            fieldLabel: 'Show artifacts from',
+            columns: 1,
+            vertical: true,
+            allowBlank: false,
+            items: [{
+                boxLabel: "User's current project(s).",
+                name: 'Utils.AncestorPiAppFilter.projectScope',
+                inputValue: 'current',
+                checked: 'current' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
             }, {
-                xtype: 'rallyportfolioitemtypecombobox',
-                id: 'Utils.AncestorPiAppFilter.defaultPiType',
-                name: 'Utils.AncestorPiAppFilter.defaultPiType',
-                fieldLabel: "Default Portfolio Item type",
-                valueField: 'TypePath',
-                allowNoEntry: false,
-                defaultSelectionPosition: 'last',
-                // Disable the preference enabled combo box plugin so that this control value is app specific
-                plugins: [],
-            },
-            {
-                xtype: 'radiogroup',
-                fieldLabel: 'Show artifacts from',
-                columns: 1,
-                vertical: true,
-                allowBlank: false,
-                items: [{
-                    boxLabel: "User's current project(s).",
-                    name: 'Utils.AncestorPiAppFilter.projectScope',
-                    inputValue: 'current',
-                    checked: 'current' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
-                }, {
-                    boxLabel: "All projects in workspace.",
-                    name: 'Utils.AncestorPiAppFilter.projectScope',
-                    inputValue: 'workspace',
-                    checked: 'workspace' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
-                }, {
-                    boxLabel: 'User selectable (either current project(s) or all projects in workspace).',
-                    name: 'Utils.AncestorPiAppFilter.projectScope',
-                    inputValue: 'user',
-                    checked: 'user' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
-                }, ],
-                listeners: {
-                    scope: this,
-                    change: function(group, newValue) {
-                        return;
-                    }
+                boxLabel: "All projects in workspace.",
+                name: 'Utils.AncestorPiAppFilter.projectScope',
+                inputValue: 'workspace',
+                checked: 'workspace' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
+            }, {
+                boxLabel: 'User selectable (either current project(s) or all projects in workspace).',
+                name: 'Utils.AncestorPiAppFilter.projectScope',
+                inputValue: 'user',
+                checked: 'user' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
+            },],
+            listeners: {
+                scope: this,
+                change: function (group, newValue) {
+                    return;
                 }
             }
+        },
+        {
+            xtype: 'rallycheckboxfield',
+            id: 'Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter',
+            name: 'Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter',
+            fieldLabel: 'Enable multi-level portfolio item filter',
+        }
         ];
-        pluginSettingsFields = _.map(pluginSettingsFields, function(pluginSettingsField) {
-            return _.merge(pluginSettingsField, this.settingsConfig)
+        pluginSettingsFields = _.map(pluginSettingsFields, function (pluginSettingsField) {
+            return _.merge(pluginSettingsField, this.settingsConfig);
         }, this);
         // apply any settings config to each field added by the plugin
         return pluginSettingsFields.concat(fields || []);
     },
 
     // Requires that app settings are available (e.g. from 'beforelaunch')
-    _addControlCmp: function() {
+    _addControlCmp: function () {
         var deferred = Ext.create('Deft.Deferred');
         var controlsLayout = {
             type: 'hbox',
@@ -321,7 +432,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             ownerLabelWidth = this.ancestorLabelWidth;
         }
         var scopeControlByItself = false;
-        if (this._showAncestorFilter() == false && this._showIgnoreProjectScopeControl() == true) {
+        if (this._showAncestorFilter() === false && this._showIgnoreProjectScopeControl() === true) {
             scopeControlByItself = true;
         }
         var controls = {
@@ -339,17 +450,17 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 padding: '6 5 0 0',
                 hidden: !this.publisher && !this._isSubscriber(),
                 items: [{
-                        xtype: 'component',
-                        id: 'publisherIndicator',
-                        html: '<span class="icon-bullhorn icon-large"></span>',
-                        hidden: !this.publisher
-                    },
-                    {
-                        xtype: 'component',
-                        id: 'subscriberIndicator',
-                        html: '<span class="icon-link icon-large"></span>',
-                        hidden: !this._isSubscriber()
-                    },
+                    xtype: 'component',
+                    id: 'publisherIndicator',
+                    html: '<span class="icon-bullhorn icon-large"></span>',
+                    hidden: !this.publisher
+                },
+                {
+                    xtype: 'component',
+                    id: 'subscriberIndicator',
+                    html: '<span class="icon-link icon-large"></span>',
+                    hidden: !this._isSubscriber()
+                },
                 ]
             }, {
                 xtype: 'container',
@@ -363,22 +474,22 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         align: 'middle'
                     },
                     items: [{
-                            xtype: 'container',
-                            id: 'piTypeArea',
-                            layout: {
-                                type: 'hbox',
-                                align: 'middle'
-                            },
+                        xtype: 'container',
+                        id: 'piTypeArea',
+                        layout: {
+                            type: 'hbox',
+                            align: 'middle'
                         },
-                        {
-                            xtype: 'container',
-                            id: 'piSelectorArea',
-                            layout: {
-                                type: 'hbox',
-                                align: 'middle',
-                                padding: '0 0 0 5'
-                            },
-                        }
+                    },
+                    {
+                        xtype: 'container',
+                        id: 'piSelectorArea',
+                        layout: {
+                            type: 'hbox',
+                            align: 'middle',
+                            padding: '0 0 0 5'
+                        },
+                    }
                     ]
                 }, {
                     xtype: 'container',
@@ -413,14 +524,14 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         },
                         listeners: {
                             scope: this,
-                            change: function(cmp, newValue) {
+                            change: function (cmp, newValue) {
                                 this._onSelect();
-                            },
+                            }
                         },
                     }]
                 }]
             }]
-        }
+        };
 
         if (this.renderArea) {
             // Without this, the components are clipped on narrow windows
@@ -433,7 +544,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // Need to get pi types sorted by ordinal lowest to highest for the filter logic to work
         Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
             scope: this,
-            success: function(data) {
+            success: function (data) {
                 this.portfolioItemTypes = data;
 
                 if (!this._isSubscriber() && this._showAncestorFilter()) {
@@ -457,7 +568,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         defaultSelectionPosition: 'first',
                         listeners: {
                             scope: this,
-                            ready: function(combobox) {
+                            ready: function (combobox) {
                                 // Unfortunately we cannot use the combobox store of PI types for our filter
                                 // logic because it is sorted by ordinal from highest to lowest so that the
                                 // picker options have a an order familiar to the user.
@@ -471,10 +582,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                 });
                                 this._addPiSelector(combobox.getValue()).then({
                                     scope: this,
-                                    success: function() {
+                                    success: function () {
                                         deferred.resolve();
                                     }
-                                })
+                                });
                             }
                         }
                     });
@@ -488,7 +599,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return deferred.promise;
     },
 
-    _addTooltips: function() {
+    _addTooltips: function () {
         Ext.tip.QuickTipManager.register({
             target: 'publisherIndicator',
             //title: 'Publisher Indicator',
@@ -506,7 +617,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         });
     },
 
-    _onCmpResize: function(cmp, width) {
+    _onCmpResize: function (cmp, width) {
         var controlsLayout = {
             type: 'hbox',
             align: 'middle',
@@ -515,7 +626,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         if (width < this.singleRowMinWidth) {
             controlsLayout = {
                 type: 'vbox'
-            }
+            };
         }
         var filtersArea = this.renderArea.down('#filtersArea');
         if (filtersArea) {
@@ -527,13 +638,13 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 layout: controlsLayout,
                 items: filters,
                 hidden: filtersArea.isHidden()
-            }
+            };
             controlsArea.remove(filtersArea, false);
             controlsArea.add(newFiltersArea);
         }
     },
 
-    _hideControlCmp: function() {
+    _hideControlCmp: function () {
         if (this.renderArea) {
             this.renderArea.down('#pubSubIndicatorArea').show();
             this.renderArea.down('#subscriberIndicator').show();
@@ -541,23 +652,24 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }
     },
 
-    _onPiTypeChange: function(piTypeSelector, newValue, oldValue) {
+    _onPiTypeChange: function (piTypeSelector, newValue, oldValue) {
         if (newValue) {
             this._removePiSelector();
             this._addPiSelector(newValue).then({
                 scope: this,
-                success: function() {
-                    this._setReady()
+                success: function () {
+                    this._setReady();
                 }
             });
         }
     },
 
-    _removePiSelector: function() {
-        this.renderArea.down('#piSelectorArea').removeAll();
+    _removePiSelector: function () {
+        // this.un('select', this._onSelect, this);
+        this.renderArea.down('#piSelectorArea').removeAll(true);
     },
 
-    _addPiSelector: function(piType) {
+    _addPiSelector: function (piType) {
         var deferred = Ext.create('Deft.Deferred');
         this.piSelector = Ext.create('Rally.ui.combobox.ArtifactSearchComboBox', {
             id: 'Utils.AncestorPiAppFilter.piSelector',
@@ -566,6 +678,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             storeConfig: {
                 models: piType,
                 autoLoad: true,
+                fetch: this.defaultFetch,
                 context: {
                     project: null
                 }
@@ -581,10 +694,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
             defaultSelectionPosition: null,
             listeners: {
                 scope: this,
-                select: function(cmp, records) {
+                select: function (cmp, records) {
                     this._onSelect();
                 },
-                ready: function(cmp, records) {
+                ready: function (cmp, records) {
                     deferred.resolve();
                 }
             }
@@ -592,7 +705,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // Allow this combobox to save null state (which is default behavior of
         // stateful mixin, but for some reason was overridden in combobox)
         Ext.override(this.piSelector, {
-            saveState: function() {
+            saveState: function () {
                 var me = this,
                     id = me.stateful && me.getStateId(),
                     hasListeners = me.hasListeners,
@@ -613,15 +726,15 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return deferred.promise;
     },
 
-    _showAncestorFilter: function() {
+    _showAncestorFilter: function () {
         return this.cmp.getSetting('Utils.AncestorPiAppFilter.enableAncestorPiFilter2');
     },
 
-    _showIgnoreProjectScopeControl: function() {
+    _showIgnoreProjectScopeControl: function () {
         return this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') == 'user';
     },
 
-    _ignoreProjectScope: function() {
+    _ignoreProjectScope: function () {
         var result = false;
         if (this._showIgnoreProjectScopeControl()) {
             // If the control is shown, that values overrides the ignoreScope app setting
@@ -633,15 +746,15 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return result;
     },
 
-    _isSubscriber: function() {
+    _isSubscriber: function () {
         return this.isSubscriber;
     },
 
-    _defaultPortfolioItemType: function() {
+    _defaultPortfolioItemType: function () {
         return this.cmp.getSetting('Utils.AncestorPiAppFilter.defaultPiType');
     },
 
-    _propertyPrefix: function(typeName, piTypesAbove) {
+    _propertyPrefix: function (typeName, piTypesAbove) {
         var property;
         if (typeName === 'hierarchicalrequirement' || typeName === 'userstory') {
             property = piTypesAbove[0].get('Name');
@@ -657,7 +770,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // property already gets us to the lowest pi level above the current type
             // for each additional level, add a 'Parent' term, except for the last
             // type in the list which is the currently selected pi type ancestor
-            _.forEach(piTypesAbove.slice(1), function(piType) {
+            _.forEach(piTypesAbove.slice(1), function (piType) {
                 property = property + '.Parent';
             }, this);
         }
@@ -670,22 +783,22 @@ Ext.define('Utils.AncestorPiAppFilter', {
      * that are an ancestor of the given model, or null if there are no pi type
      * ancestors for the given model.
      */
-    _piTypeAncestors: function(modelName, selectedPiTypePath) {
+    _piTypeAncestors: function (modelName, selectedPiTypePath) {
         var result = null;
         var selectedPiTypeIndex;
         var modelNamePiTypeIndex;
 
         if (_.contains(['hierarchicalrequirement', 'userstory', 'defect'], modelName)) {
-            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function(piType) {
+            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
                 return piType.get('TypePath').toLowerCase() === selectedPiTypePath.toLowerCase();
             });
             result = this.portfolioItemTypes.slice(0, selectedPiTypeIndex + 1);
         }
         else if (Ext.String.startsWith(modelName, 'portfolioitem')) {
-            modelNamePiTypeIndex = _.findIndex(this.portfolioItemTypes, function(piType) {
+            modelNamePiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
                 return piType.get('TypePath').toLowerCase() === modelName.toLowerCase();
             });
-            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function(piType) {
+            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
                 return piType.get('TypePath').toLowerCase() === selectedPiTypePath.toLowerCase();
             });
 
@@ -697,5 +810,229 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }
 
         return result;
+    },
+
+    /*
+        Multi-Level Filter functions
+    */
+
+    _showMultiLevelFilter: function () {
+        return this.cmp.getSetting('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter');
+    },
+
+    _addFilters: function () {
+        return new Promise(function (resolve, reject) {
+            var promises = [];
+            if (this.btnRenderArea) {
+                this.showFiltersBtn = this.btnRenderArea.add(
+                    {
+                        xtype: 'rallybutton',
+                        cls: 'secondary rly-small',
+                        iconCls: 'icon-filter',
+                        toolTipText: 'Show Filters',
+                        handler: this._toggleFilters,
+                        scope: this
+                    }
+                );
+
+                Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
+                    scope: this,
+                    success: function (piTypes) {
+                        this.piTypes = piTypes.reverse();
+                        var piTypePaths = _.map(piTypes, function (piType) {
+                            return piType.get('TypePath');
+                        });
+
+                        this.models = Rally.data.ModelFactory.getModels({
+                            types: piTypePaths,
+                            context: this.cmp.getContext(),
+                            scope: this,
+                            success: function (models) {
+
+                                this.tabPanel = this.panelRenderArea.add({
+                                    xtype: 'tabpanel',
+                                    width: '98%',
+                                    minTabWidth: 100,
+                                    plain: true,
+                                    autoRender: true,
+                                    items: []
+                                });
+
+                                this.filterControls = [];
+
+                                _.each(models, function (model, key) {
+                                    promises.push(new Promise(function (newResolve) {
+                                        var filterName = `inlineFilter${key}`;
+                                        this.filterControls.push(Ext.create('Rally.ui.inlinefilter.InlineFilterControl', {
+                                            xtype: 'rallyinlinefiltercontrol',
+                                            name: filterName,
+                                            itemId: filterName,
+                                            context: this.cmp.getContext(),
+                                            inlineFilterButtonConfig: {
+                                                stateful: true,
+                                                stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}`),
+                                                context: this.cmp.getContext(),
+                                                modelNames: key,
+                                                inlineFilterPanelConfig: {
+                                                    name: `${filterName}-panel`,
+                                                    itemId: `${filterName}-panel`,
+                                                    model: model,
+                                                    padding: 5,
+                                                    width: '98%',
+                                                    context: this.cmp.getContext(),
+                                                    quickFilterPanelConfig: {
+                                                        defaultFields: this.defaultFields
+                                                    },
+                                                    advancedFilterPanelConfig: {
+                                                        collapsed: this.advancedFilterCollapsed
+                                                    },
+                                                },
+                                                listeners: {
+                                                    inlinefilterchange: this._onFilterChange,
+                                                    inlinefilterready: function (panel) {
+                                                        this._onFilterReady(panel);
+                                                        newResolve();
+                                                    },
+                                                    scope: this
+                                                }
+                                            }
+                                        }));
+                                    }.bind(this)));
+                                }, this);
+
+                                Promise.all(promises).then(function () {
+
+                                    this.clearAllButton = Ext.widget({
+                                        xtype: 'rallybutton',
+                                        itemId: 'clearAllButton',
+                                        cls: 'secondary rly-small clear-all-filters-button',
+                                        text: 'Clear All',
+                                        margin: '3 9 3 0',
+                                        hidden: !this._hasFilters(),
+                                        listeners: {
+                                            click: this._clearAllFilters,
+                                            scope: this
+                                        }
+                                    });
+
+                                    this.btnRenderArea.add(this.clearAllButton);
+                                    this.tabPanel.setActiveTab(0);
+                                    if (this.filtersHidden) {
+                                        this.tabPanel.hide();
+                                    }
+
+                                    // Without this, the components are clipped on narrow windows
+                                    this.btnRenderArea.setOverflowXY('auto', 'auto');
+
+                                    resolve();
+                                }.bind(this));
+                            },
+                            failure: function () {
+                                reject('Failed to fetch models for multi-level filter');
+                            }
+                        });
+                    },
+                    failure: function () {
+                        reject('Failed to fetch portfolio item types for multi-level filter');
+                    }
+                });
+            } else {
+                reject('Unable to find button render area for multi-level filter');
+            }
+        }.bind(this));
+    },
+
+    _clearAllFilters: function () {
+        this.suspendEvents(false);
+        this.suspendLayouts();
+
+        _.each(this.filterControls, function (filterControl) {
+            filterControl.inlineFilterButton.clearAllFilters();
+        });
+
+        if (this.clearAllButton) {
+            this.clearAllButton.hide();
+        }
+
+        this.resumeEvents();
+        this.resumeLayouts(false);
+        this.updateLayout();
+        this.fireEvent('change', this.getMultiLevelFilters());
+    },
+
+    _hasFilters: function () {
+        var filters = this.getMultiLevelFilters();
+        var returnVal = false;
+
+        _.each(filters, function (filter) {
+            if (filter.length) {
+                returnVal = true;
+            }
+        });
+
+        return returnVal;
+    },
+
+    _onFilterReady: function (panel) {
+        let filterCount = panel.quickFilterPanel.getFilters().length + panel.advancedFilterPanel.getFilters().length;
+        let tab = this.tabPanel.add({
+            title: '' + (panel.model && panel.model.elementName) + (filterCount ? ` (${filterCount})` : ''),
+            html: '',
+            itemId: `${panel.model && panel.model.elementName}-tab`
+        });
+        tab.add(panel);
+        panel.expand();
+    },
+
+    _applyFilters: function () {
+        this.suspendEvents(false);
+        this.suspendLayouts();
+        _.each(this.filterControls, function (filterControl) {
+            filterControl.inlineFilterButton._applyFilters();
+        });
+        this.resumeEvents();
+        this.resumeLayouts(false);
+        this.updateLayout();
+    },
+
+    _onFilterChange: function () {
+        if (this.clearAllButton) {
+            if (this._hasFilters()) {
+                this.clearAllButton.show();
+            }
+            else {
+                this.clearAllButton.hide();
+            }
+        }
+
+        _.each(this.filterControls, function (filterControl) {
+            let typeName = (filterControl.inlineFilterButton.inlineFilterPanel.model.elementName) || 'unknown';
+            this._setTabText(typeName, filterControl.inlineFilterButton.getFilters().length);
+        }, this);
+
+        if (this.ready) {
+            this.fireEvent('change', this.getMultiLevelFilters());
+        }
+    },
+
+    _setTabText: function (typeName, filterCount) {
+        var titleText = filterCount ? `${typeName} (${filterCount})` : typeName;
+        var tab = this.tabPanel.child(`#${typeName}-tab`);
+
+        if (tab) { tab.setTitle(titleText); }
+    },
+
+    _toggleFilters: function (btn) {
+        if (this.tabPanel.isHidden()) {
+            this.tabPanel.show();
+            btn.setToolTipText('Hide Filters');
+            btn.addCls('primary');
+            btn.removeCls('secondary');
+        } else {
+            this.tabPanel.hide();
+            btn.setToolTipText('Show Filters');
+            btn.addCls('secondary');
+            btn.removeCls('primary');
+        }
     }
 });
