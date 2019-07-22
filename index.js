@@ -280,6 +280,27 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return this._getValue().ignoreProjectScope;
     },
 
+    getMultiLevelFilterStates: function () {
+        var states = {};
+        _.each(this.filterControls, function (filterControl) {
+            let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
+            states[typeName] = filterControl.inlineFilterButton.getState();
+        });
+
+        return states;
+    },
+
+    setMultiLevelFilterStates: function (states) {
+        _.each(states, function (val, key) {
+            _.each(this.filterControls, function (filterControl) {
+                let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
+                if (typeName === this.key) {
+                    filterControl.inlineFilterButton.applyState(this.val);
+                }
+            }.bind(this));
+        });
+    },
+
     _setupPubSub: function () {
         if (this.publisher) {
             this.subscribe(this, 'registerChangeSubscriber', function (subscriberName) {
@@ -683,6 +704,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     project: null
                 }
             },
+            queryDelay: 1250,
             stateful: true,
             stateId: this.cmp.getContext().getScopedStateId('Utils.AncestorPiAppFilter.piSelector'),
             stateEvents: ['select'],
