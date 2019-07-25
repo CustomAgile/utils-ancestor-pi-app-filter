@@ -195,6 +195,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }, this);
     },
 
+    // Returns a filter that will ensure results are children of the
+    // selected ancestor portfolio item. type is the TypeDefinition 
+    // for the Portfolio Item level you wish to fetch.
     getAncestorFilterForType: function (type) {
         var filter;
         var modelName = type.toLowerCase();
@@ -227,6 +230,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return filter;
     },
 
+    // Returns an array containing all of the filters applied in the
+    // multi-level filter as well as the selected ancestor PI if one
+    // is selected. type is the TypeDefinition for the Portfolio Item
+    // level you wish to fetch.
     getAllFiltersForType: function (type) {
         let ancestorFilter = this.getAncestorFilterForType(type);
         let filters = ancestorFilter ? [ancestorFilter] : [];
@@ -235,6 +242,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return filters;
     },
 
+    // Returns an array containing all of the filters applied in the
+    // multi-level filter. type is the TypeDefinition for the Portfolio 
+    // Item level you wish to fetch.
     getMultiLevelFiltersForType: function (type) {
         let filters = [];
         let modelName = type.toLowerCase();
@@ -265,6 +275,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return filters;
     },
 
+    // Returns an object containing all of the filters applied in the multi-level
+    // filter. Keys are the type definition field and the resulting values are arrays
+    // of filters
     getMultiLevelFilters: function () {
         var filters = {};
 
@@ -284,6 +297,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return this._getValue().ignoreProjectScope;
     },
 
+    // Returns an object of states for all of the inline filters
+    // Used for getting and setting shared views
     getMultiLevelFilterStates: function () {
         var states = {};
         _.each(this.filterControls, function (filterControl) {
@@ -294,6 +309,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return states;
     },
 
+    // Sets the states of the inline filters
+    // Used when applying a shared view to the filters
     setMultiLevelFilterStates: function (states) {
         this.tabPanel.removeAll();
         for (let key in states) {
@@ -718,8 +735,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         project: null
                     }
                 },
-                queryDelay: 1000,
-                autoSelect: false,
+                queryDelay: 7000,
+                // autoSelect: false,
                 autoSelectCurrentItem: false,
                 stateful: true,
                 stateId: this.cmp.getContext().getScopedStateId('Utils.AncestorPiAppFilter.piSelector'),
@@ -729,7 +746,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 clearValue: null,
                 allowNoEntry: this.allowNoEntry,
                 noEntryValue: '',
-                value: initialValue,
+                value: initialValue || '',
                 // forceSelection: false,
                 defaultSelectionPosition: null,
                 listeners: {
@@ -1029,6 +1046,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _onFilterReady: function (panel) {
+        panel.expand();
         let filterCount = panel.quickFilterPanel.getFilters().length + panel.advancedFilterPanel.getFilters().length;
         let modelName = (panel.model && panel.model.elementName) || 'unknown';
 
@@ -1038,13 +1056,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
             itemId: `${modelName}-tab`,
 
         });
+
         tab.add({
             xtype: 'container',
             layout: 'hbox',
             items: [panel]
         });
-
-        panel.expand();
     },
 
     _applyFilters: function () {
