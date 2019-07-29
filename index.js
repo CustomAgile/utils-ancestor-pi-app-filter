@@ -63,6 +63,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         defaultFetch: true,
 
         /**
+         * @cfg {Array}
+         * Whitelist array for inline filters
+         */
+        whiteListFields: [],
+
+        /**
          * @cfg {String}
          * Label of the Portfolio Item Type picker
          */
@@ -113,7 +119,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
         /**
          * @cfg {Boolean}
-         * Set to false to show filters on load
+         * Set to true to hide filters on load
          */
         filtersHidden: false,
 
@@ -123,7 +129,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          */
         advancedFilterCollapsed: false
     },
-
+    filterControls: [],
     portfolioItemTypes: [],
     readyDeferred: null,
     piTypesDeferred: null,
@@ -166,7 +172,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         var appDefaults = this.cmp.defaultSettings;
         appDefaults['Utils.AncestorPiAppFilter.enableAncestorPiFilter2'] = false;
         appDefaults['Utils.AncestorPiAppFilter.projectScope'] = 'current';
-        appDefaults['Utils.AncestorPiAppFilter.enableMultiLevelPiFilter'] = true;
+        appDefaults['Utils.AncestorPiAppFilter.enableMultiLevelPiFilter'] = false;
         this.cmp.setDefaultSettings(appDefaults);
 
         Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
@@ -885,7 +891,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
     /*
         Multi-Level Filter functions
     */
-
     _showMultiLevelFilter: function () {
         return this.cmp.getSetting('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter');
     },
@@ -893,123 +898,130 @@ Ext.define('Utils.AncestorPiAppFilter', {
     _addFilters: function () {
         return new Promise(function (resolve, reject) {
             var promises = [];
-            if (this.btnRenderArea) {
-                this.showFiltersBtn = this.btnRenderArea.add(
-                    {
-                        xtype: 'rallybutton',
-                        cls: 'secondary rly-small',
-                        iconCls: 'icon-filter',
-                        toolTipText: 'Show Filters',
-                        handler: this._toggleFilters,
-                        scope: this
-                    }
-                );
+            if (this._showMultiLevelFilter()) {
+                if (this.btnRenderArea) {
+                    this.showFiltersBtn = this.btnRenderArea.add(
+                        {
+                            xtype: 'rallybutton',
+                            cls: 'secondary rly-small',
+                            iconCls: 'icon-filter',
+                            toolTipText: 'Show Filters',
+                            handler: this._toggleFilters,
+                            scope: this
+                        }
+                    );
 
-                Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
-                    scope: this,
-                    success: function (piTypes) {
-                        this.piTypes = piTypes.reverse();
-                        var piTypePaths = _.map(piTypes, function (piType) {
-                            return piType.get('TypePath');
-                        });
+                    Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
+                        scope: this,
+                        success: function (piTypes) {
+                            this.piTypes = piTypes.reverse();
+                            var piTypePaths = _.map(piTypes, function (piType) {
+                                return piType.get('TypePath');
+                            });
 
-                        this.models = Rally.data.ModelFactory.getModels({
-                            types: piTypePaths,
-                            context: this.cmp.getContext(),
-                            scope: this,
-                            success: function (models) {
+                            this.models = Rally.data.ModelFactory.getModels({
+                                types: piTypePaths,
+                                context: this.cmp.getContext(),
+                                scope: this,
+                                success: function (models) {
 
-                                this.tabPanel = this.panelRenderArea.add({
-                                    xtype: 'tabpanel',
-                                    width: '98%',
-                                    minTabWidth: 100,
-                                    plain: true,
-                                    autoRender: true,
-                                    items: []
-                                });
-
-                                this.filterControls = [];
-
-                                _.each(models, function (model, key) {
-                                    promises.push(new Promise(function (newResolve) {
-                                        var filterName = `inlineFilter${key}`;
-                                        this.filterControls.push(Ext.create('Rally.ui.inlinefilter.InlineFilterControl', {
-                                            xtype: 'rallyinlinefiltercontrol',
-                                            name: filterName,
-                                            stateful: true,
-                                            stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}-control`),
-                                            itemId: filterName,
-                                            context: this.cmp.getContext(),
-                                            inlineFilterButtonConfig: {
-                                                stateful: true,
-                                                stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}`),
-                                                context: this.cmp.getContext(),
-                                                modelNames: key,
-                                                inlineFilterPanelConfig: {
-                                                    name: `${filterName}-panel`,
-                                                    itemId: `${filterName}-panel`,
-                                                    model: model,
-                                                    padding: 5,
-                                                    width: '98%',
-                                                    context: this.cmp.getContext(),
-                                                    quickFilterPanelConfig: {
-                                                        defaultFields: this.defaultFields
-                                                    },
-                                                    advancedFilterPanelConfig: {
-                                                        collapsed: this.advancedFilterCollapsed
-                                                    },
-                                                },
-                                                listeners: {
-                                                    inlinefilterchange: this._onFilterChange,
-                                                    inlinefilterready: function (panel) {
-                                                        this._onFilterReady(panel);
-                                                        newResolve();
-                                                    },
-                                                    scope: this
-                                                }
-                                            }
-                                        }));
-                                    }.bind(this)));
-                                }, this);
-
-                                Promise.all(promises).then(function () {
-
-                                    this.clearAllButton = Ext.widget({
-                                        xtype: 'rallybutton',
-                                        itemId: 'clearAllButton',
-                                        cls: 'secondary rly-small clear-all-filters-button',
-                                        text: 'Clear All',
-                                        margin: '3 9 3 0',
-                                        hidden: !this._hasFilters(),
-                                        listeners: {
-                                            click: this._clearAllFilters,
-                                            scope: this
-                                        }
+                                    this.tabPanel = this.panelRenderArea.add({
+                                        xtype: 'tabpanel',
+                                        width: '98%',
+                                        cls: 'blue-tabs',
+                                        minTabWidth: 100,
+                                        plain: true,
+                                        autoRender: true,
+                                        items: []
                                     });
 
-                                    this.btnRenderArea.add(this.clearAllButton);
-                                    this.tabPanel.setActiveTab(0);
-                                    if (this.filtersHidden) {
-                                        this.tabPanel.hide();
-                                    }
+                                    this.filterControls = [];
 
-                                    // Without this, the components are clipped on narrow windows
-                                    this.btnRenderArea.setOverflowXY('auto', 'auto');
+                                    _.each(models, function (model, key) {
+                                        promises.push(new Promise(function (newResolve) {
+                                            var filterName = `inlineFilter${key}`;
+                                            this.filterControls.push(Ext.create('Rally.ui.inlinefilter.InlineFilterControl', {
+                                                xtype: 'rallyinlinefiltercontrol',
+                                                name: filterName,
+                                                stateful: true,
+                                                stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}-control`),
+                                                itemId: filterName,
+                                                context: this.cmp.getContext(),
+                                                inlineFilterButtonConfig: {
+                                                    stateful: true,
+                                                    stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}`),
+                                                    context: this.cmp.getContext(),
+                                                    modelNames: key,
+                                                    inlineFilterPanelConfig: {
+                                                        name: `${filterName}-panel`,
+                                                        itemId: `${filterName}-panel`,
+                                                        model: model,
+                                                        padding: 5,
+                                                        width: '98%',
+                                                        context: this.cmp.getContext(),
+                                                        quickFilterPanelConfig: {
+                                                            defaultFields: this.defaultFields,
+                                                            whiteListFields: this.whiteListFields
+                                                        },
+                                                        advancedFilterPanelConfig: {
+                                                            collapsed: this.advancedFilterCollapsed
+                                                        },
+                                                    },
+                                                    listeners: {
+                                                        inlinefilterchange: this._onFilterChange,
+                                                        inlinefilterready: function (panel) {
+                                                            this._onFilterReady(panel);
+                                                            newResolve();
+                                                        },
+                                                        scope: this
+                                                    }
+                                                }
+                                            }));
+                                        }.bind(this)));
+                                    }, this);
 
-                                    resolve();
-                                }.bind(this));
-                            },
-                            failure: function () {
-                                reject('Failed to fetch models for multi-level filter');
-                            }
-                        });
-                    },
-                    failure: function () {
-                        reject('Failed to fetch portfolio item types for multi-level filter');
-                    }
-                });
-            } else {
-                reject('Unable to find button render area for multi-level filter');
+                                    Promise.all(promises).then(function () {
+
+                                        this.clearAllButton = Ext.widget({
+                                            xtype: 'rallybutton',
+                                            itemId: 'clearAllButton',
+                                            cls: 'secondary rly-small clear-all-filters-button',
+                                            text: 'Clear All',
+                                            margin: '3 9 3 0',
+                                            hidden: !this._hasFilters(),
+                                            listeners: {
+                                                click: this._clearAllFilters,
+                                                scope: this
+                                            }
+                                        });
+
+                                        this.btnRenderArea.add(this.clearAllButton);
+                                        this.tabPanel.setActiveTab(0);
+                                        if (this.filtersHidden) {
+                                            this.tabPanel.hide();
+                                        }
+
+                                        // Without this, the components are clipped on narrow windows
+                                        this.btnRenderArea.setOverflowXY('auto', 'auto');
+
+                                        resolve();
+                                    }.bind(this));
+                                },
+                                failure: function () {
+                                    reject('Failed to fetch models for multi-level filter');
+                                }
+                            });
+                        },
+                        failure: function () {
+                            reject('Failed to fetch portfolio item types for multi-level filter');
+                        }
+                    });
+                } else {
+                    reject('Unable to find button render area for multi-level filter');
+                }
+            }
+            else {
+                resolve();
             }
         }.bind(this));
     },
