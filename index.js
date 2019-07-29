@@ -69,6 +69,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         whiteListFields: [],
 
         /**
+         * @cfg {Array}
+         * Blacklist array for inline filters
+         */
+        blackListFields: [],
+
+        /**
          * @cfg {String}
          * Label of the Portfolio Item Type picker
          */
@@ -960,11 +966,20 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                                         width: '98%',
                                                         context: this.cmp.getContext(),
                                                         quickFilterPanelConfig: {
-                                                            defaultFields: this.defaultFields,
-                                                            whiteListFields: this.whiteListFields
+                                                            defaultFields: this.defaultFilterFields,
+                                                            addQuickFilterConfig: {
+                                                                whiteListFields: this.whiteListFields,
+                                                                blackListFields: this.blackListFields
+                                                            }
                                                         },
                                                         advancedFilterPanelConfig: {
-                                                            collapsed: this.advancedFilterCollapsed
+                                                            collapsed: this.advancedFilterCollapsed,
+                                                            advancedFilterRowsConfig: {
+                                                                propertyFieldConfig: {
+                                                                    blackListFields: this.blackListFields,
+                                                                    whiteListFields: this.whiteListFields
+                                                                }
+                                                            }
                                                         },
                                                     },
                                                     listeners: {
