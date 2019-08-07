@@ -976,6 +976,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                             minTabWidth: 100,
                                             plain: true,
                                             autoRender: true,
+                                            hidden: this._isSubscriber(),
                                             items: []
                                         });
 
@@ -1035,28 +1036,29 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
                                         Promise.all(promises).then(function () {
 
-                                            this.clearAllButton = Ext.widget({
-                                                xtype: 'rallybutton',
-                                                itemId: 'clearAllButton',
-                                                cls: 'secondary rly-small clear-all-filters-button',
-                                                text: 'Clear All',
-                                                margin: '3 9 3 0',
-                                                hidden: !this._hasFilters(),
-                                                listeners: {
-                                                    click: this._clearAllFilters,
-                                                    scope: this
+                                            if (!this._isSubscriber()) {
+                                                this.clearAllButton = Ext.widget({
+                                                    xtype: 'rallybutton',
+                                                    itemId: 'clearAllButton',
+                                                    cls: 'secondary rly-small clear-all-filters-button',
+                                                    text: 'Clear All',
+                                                    margin: '3 9 3 0',
+                                                    hidden: !this._hasFilters(),
+                                                    listeners: {
+                                                        click: this._clearAllFilters,
+                                                        scope: this
+                                                    }
+                                                });
+
+                                                this.btnRenderArea.add(this.clearAllButton);
+                                                this.tabPanel.setActiveTab(0);
+                                                if (this.filtersHidden) {
+                                                    this.tabPanel.hide();
                                                 }
-                                            });
 
-                                            this.btnRenderArea.add(this.clearAllButton);
-                                            this.tabPanel.setActiveTab(0);
-                                            if (this.filtersHidden) {
-                                                this.tabPanel.hide();
+                                                // Without this, the components are clipped on narrow windows
+                                                this.btnRenderArea.setOverflowXY('auto', 'auto');
                                             }
-
-                                            // Without this, the components are clipped on narrow windows
-                                            this.btnRenderArea.setOverflowXY('auto', 'auto');
-
                                             resolve();
                                         }.bind(this));
                                     },
