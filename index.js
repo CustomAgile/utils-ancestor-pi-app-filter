@@ -953,9 +953,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         this.showFiltersBtn = this.btnRenderArea.add(
                             {
                                 xtype: 'rallybutton',
-                                cls: 'secondary rly-small',
+                                cls: this.filtersHidden ? 'secondary' : 'primary' + ' rly-small',
                                 iconCls: 'icon-filter',
-                                toolTipText: 'Show Filters',
+                                toolTipText: + this.filtersHidden ? 'Show' : 'Hide' + ' Filters',
                                 handler: this._toggleFilters,
                                 scope: this
                             }
