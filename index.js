@@ -75,6 +75,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         blackListFields: [],
 
         /**
+         * @cfg {Boolean}
+         * Setting for inlineFilterButtonConfig
+         */
+        filterChildren: false,
+
+        /**
          * @cfg {String}
          * Label of the Portfolio Item Type picker
          */
@@ -997,6 +1003,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                                         stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}`),
                                                         context: this.cmp.getContext(),
                                                         modelNames: key,
+                                                        filterChildren: this.filterChildren,
                                                         inlineFilterPanelConfig: {
                                                             name: `${filterName}-panel`,
                                                             itemId: `${filterName}-panel`,
