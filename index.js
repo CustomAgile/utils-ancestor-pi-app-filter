@@ -202,7 +202,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             function (error) {
                 Rally.ui.notify.Notifier.showError({ message: error });
                 this._setReady();
-            }
+            }.bind(this)
         );
     },
 
