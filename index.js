@@ -318,7 +318,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
                         if (hasCustomFieldFilters) {
                             let parentIDs = await new Promise(function (resolve) { this._getFilteredIds(currentLevelFiltersWithoutParent, key, resolve); }.bind(this));
-                            console.log('parentids', parentIDs, ',' + _.map(parentIDs, function (id) { return id.get('ObjectID'); }).join(','));
                             if (parentIDs.length) {
                                 filters.push(new Rally.data.wsapi.Filter({
                                     property: property + '.ObjectID',
