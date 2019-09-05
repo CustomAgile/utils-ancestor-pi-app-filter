@@ -66,7 +66,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Array}
          * Whitelist array for inline filters
          */
-        whiteListFields: [],
+        whiteListFields: ['Tags', 'Milstones'],
 
         /**
          * @cfg {Array}
@@ -262,19 +262,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // multi-level filter as well as the selected ancestor PI if one
     // is selected. 
     // type is the TypeDefinition.TypePath for the Portfolio Item level you wish to fetch.
-    getAllFiltersForType: async function (type) {
+    getAllFiltersForType: async function (type, includeFiltersBelowType) {
         let ancestorFilter = this.getAncestorFilterForType(type);
         let filters = ancestorFilter ? [ancestorFilter] : [];
-        let multiFilters = await this.getMultiLevelFiltersForType(type);
+        let multiFilters = await this.getMultiLevelFiltersForType(type, includeFiltersBelowType);
         filters = filters.concat(multiFilters);
 
         return filters;
     },
 
-    // Returns an array containing all of the filters applied in the
-    // multi-level filter. type is the TypeDefinition for the Portfolio 
-    // Item level you wish to fetch.
-    getMultiLevelFiltersForType: async function (type) {
+    // Returns an array containing all of the filters applied in the multi-level filter for a given PI type. 
+    // Type is the TypeDefinition.TypePath for the Portfolio Item level you wish to fetch.
+    getMultiLevelFiltersForType: async function (type, includeFiltersBelowType) {
         let filters = [];
         let modelName = type.toLowerCase();
         let multiLevelFilters = this.getMultiLevelFilters();
@@ -282,62 +281,90 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
         for (let i = 0; i < keys.length; i++) {
             let key = keys[i];
-            let val = multiLevelFilters[keys[i]];
-            if (modelName === key.toLowerCase()) {
-                filters = filters.concat(val);
-            }
-            else {
-                let pisAbove = this._piTypeAncestors(modelName, key);
+            let val = multiLevelFilters[key];
 
-                if (val.length && pisAbove !== null) {
-                    let property = this._propertyPrefix(modelName, pisAbove);
-                    if (property) {
-                        let currentLevelFilters = [];
-                        let currentLevelFiltersWithoutParent = [];
-                        let hasCustomFieldFilters = false;
-                        _.each(val, function (filter) {
-                            // Rally has a hard time filtering on custom dropdown fields on parents so
-                            // we must workaround this by getting a list of parent IDs that meet the filter
-                            // criteria instead.
-                            if (filter.property.indexOf('c_') !== -1 && typeof filter.value === 'string') {
-                                hasCustomFieldFilters = true;
-                            }
+            if (val.length) {
+                // If scoping all projects, filter releases by name instead of value
+                await this._convertReleaseFilters(val);
 
-                            currentLevelFiltersWithoutParent.push(new Rally.data.wsapi.Filter({
-                                property: filter.property,
-                                operator: filter.operator,
-                                value: filter.value
-                            }));
+                if (modelName === key.toLowerCase()) {
+                    filters = filters.concat(val);
+                }
+                else {
+                    let pisAbove = this._piTypeAncestors(modelName, key);
 
-                            currentLevelFilters.push(new Rally.data.wsapi.Filter({
-                                property: `${property}.${filter.property}`,
-                                operator: filter.operator,
-                                value: filter.value
-                            }));
-                        }.bind(this));
+                    if (pisAbove !== null) {
+                        let property = this._propertyPrefix(modelName, pisAbove);
+                        if (property) {
+                            let currentLevelFilters = [];
+                            let currentLevelFiltersWithoutParentPrefix = [];
+                            let hasCustomFieldFilters = false;
+                            _.each(val, function (filter) {
+                                // Rally has a hard time filtering on custom dropdown fields on parents so
+                                // we check to see if any are applied
+                                if (filter.property.indexOf('c_') !== -1 && typeof filter.value === 'string') {
+                                    hasCustomFieldFilters = true;
+                                }
 
-                        if (hasCustomFieldFilters) {
-                            let parentIDs = await new Promise(function (resolve) { this._getFilteredIds(currentLevelFiltersWithoutParent, key, resolve); }.bind(this));
-                            if (parentIDs.length) {
-                                filters.push(new Rally.data.wsapi.Filter({
-                                    property: property + '.ObjectID',
-                                    operator: 'in',
-                                    value: _.map(parentIDs, function (id) { return id.get('ObjectID'); })
+                                // List of filters if custom field filters exist
+                                currentLevelFiltersWithoutParentPrefix.push(new Rally.data.wsapi.Filter({
+                                    property: filter.property,
+                                    operator: filter.operator,
+                                    value: filter.value
                                 }));
+
+                                // List of filters if no custom field filters exist
+                                currentLevelFilters.push(new Rally.data.wsapi.Filter({
+                                    property: `${property}.${filter.property}`,
+                                    operator: filter.operator,
+                                    value: filter.value
+                                }));
+                            }.bind(this));
+
+                            // If filters on custom fields exist, lets get a list of IDs at that level and use those IDs as our filter
+                            if (hasCustomFieldFilters) {
+                                let parentIDs = [];
+                                try {
+                                    parentIDs = await new Promise(function (resolve) { this._getFilteredIds(currentLevelFiltersWithoutParentPrefix, key, resolve); }.bind(this));
+                                    if (parentIDs.length) {
+                                        filters.push(new Rally.data.wsapi.Filter({
+                                            property: property + '.ObjectID',
+                                            operator: 'in',
+                                            value: _.map(parentIDs, function (id) { return id.get('ObjectID'); })
+                                        }));
+                                    }
+                                    else {
+                                        filters.push(new Rally.data.wsapi.Filter({
+                                            property: property + '.ObjectID',
+                                            operator: '=',
+                                            value: 0
+                                        }));
+                                    }
+                                }
+                                catch (e) {
+                                    return [new Rally.data.wsapi.Filter({
+                                        property: property + '.ObjectID',
+                                        operator: '=',
+                                        value: 0
+                                    })];
+                                }
                             }
                             else {
-                                filters.push(new Rally.data.wsapi.Filter({
-                                    property: property + '.ObjectID',
-                                    operator: '=',
-                                    value: 0
-                                }));
+                                filters = filters.concat(currentLevelFilters);
                             }
-                        }
-                        else {
-                            filters = filters.concat(currentLevelFilters);
                         }
                     }
                 }
+            }
+        }
+
+        // If building a hierarchy from top level down, we don't need to include filters
+        // below the given type (e.g. a timeline app). Otherwise if being used for an app
+        // that only displays one PI type, we need to include those lower filters
+        if (includeFiltersBelowType) {
+            let childFilter = await this._getChildFiltersForType(type, multiLevelFilters);
+            if (childFilter) {
+                filters.push(childFilter);
             }
         }
 
@@ -345,17 +372,21 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     // Returns an array containing all of the filters applied to a specific PI level.
-    // type is the TypeDefinition for the Portfolio Item level you wish to fetch.
-    getFiltersOfSingleType: function (type) {
+    // type is the TypeDefinition.TypePath for the Portfolio Item level you wish to fetch.
+    getFiltersOfSingleType: async function (type) {
         let filters = [];
         let modelName = type.toLowerCase();
         let multiLevelFilters = this.getMultiLevelFilters();
+        let keys = Object.keys(multiLevelFilters);
 
-        _.each(multiLevelFilters, function (val, key) {
+        for (let i = 0; i < keys.length; i++) {
+            let key = keys[i];
+            let val = multiLevelFilters[key];
             if (modelName === key.toLowerCase()) {
+                await this._convertReleaseFilters(val);
                 filters = filters.concat(val);
             }
-        }.bind(this));
+        }
 
         return filters;
     },
@@ -375,6 +406,89 @@ Ext.define('Utils.AncestorPiAppFilter', {
         });
 
         return filters;
+    },
+
+    _getChildFiltersForType: async function (type, filters) {
+        let idFilter;
+        // PI types are in order lowest to highest
+        for (let i = 0; i < this.portfolioItemTypes.length; i++) {
+            let currentType = this.portfolioItemTypes[i].get('TypePath');
+            if (currentType.toLowerCase() === type.toLowerCase()) {
+                break;
+            }
+            if ((filters[currentType] && filters[currentType].length) || idFilter) {
+                if (!filters[currentType]) {
+                    filters[currentType] = [];
+                }
+                if (idFilter) {
+                    filters[currentType].push(idFilter);
+                }
+                let records = await new Promise(function (resolve) { this._getFilteredIds(filters[currentType], currentType, resolve); }.bind(this));
+                if (records.length) {
+                    let parents = _.map(records, function (id) { return (id.get('Parent') && id.get('Parent').ObjectID) || 0; });
+                    idFilter = new Rally.data.wsapi.Filter({
+                        property: 'ObjectID',
+                        operator: 'in',
+                        value: _.uniq(parents)
+                    });
+                }
+                else {
+                    idFilter = new Rally.data.wsapi.Filter({
+                        property: 'ObjectID',
+                        operator: '=',
+                        value: 0
+                    });
+                }
+            }
+        }
+        return idFilter;
+    },
+
+    // removeInvalidFilters: function () {
+    //     _.each(this.filterControls, function (filterControl) {
+    //         filterControl.inlineFilterButton._removeInvalidFilters();
+    //     }, this);
+    // },
+
+    // Takes an array of filters. If scoping across all projects, we need to update any release
+    // filters to filter on the release name rather than the release value
+    _convertReleaseFilters: async function (filters) {
+        if (this.getIgnoreProjectScope()) {
+            for (let i = 0; i < filters.length; i++) {
+                if (filters[i].property === 'Release') {
+                    let release = await this._getRelease(filters[i].value);
+                    if (release) {
+                        filters[i] = new Rally.data.wsapi.Filter({
+                            property: 'Release.Name',
+                            value: release.Name
+                        });
+                    }
+                }
+            }
+        }
+    },
+
+    _getRelease: async function (releaseVal) {
+        let deferred = Ext.create('Deft.Deferred');
+
+        Ext.Ajax.request({
+            url: Ext.String.format('/slm/webservice/v2.0{0}?fetch=Name', releaseVal),
+            success(response) {
+                if (response && response.responseText) {
+                    let obj = Ext.JSON.decode(response.responseText);
+                    if (obj && obj.Release) {
+                        deferred.resolve(obj.Release);
+                    }
+                    else {
+                        deferred.resolve(null);
+                    }
+                } else {
+                    deferred.resolve(null);
+                }
+            }
+        });
+
+        return deferred.promise;
     },
 
     getSelectedPiRecord: function () {
@@ -431,7 +545,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // Returns an array of records fitting the given filters
     _getFilteredIds: function (filters, model, resolve) {
         let dataContext = Rally.getApp().getContext().getDataContext();
-        if (this._ignoreProjectScope()) {
+        if (this.getIgnoreProjectScope()) {
             dataContext.project = null;
         }
 
@@ -440,7 +554,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             context: dataContext,
             filters,
             model,
-            fetch: ['ObjectID'],
+            fetch: ['ObjectID', 'Parent'],
             limit: Infinity
         });
 
@@ -450,7 +564,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 resolve(records);
             },
             failure: function () {
-                throw new Error('Multi-level filter failed while fetching parent IDs with a custom field filter');
+                Rally.ui.notify.Notifier.showError({ message: 'Multi-level filter failed while filtering out items below selected portfolio item type. Result set was probably too large.' });
+                resolve([]);
             }
         });
     },
@@ -532,7 +647,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _setReady: function () {
+        this._updateReleaseValues();
+
         this.ready = true;
+
+        if (this._isSubscriber() && this.tabPanel) {
+            this.tabPanel.hide();
+        }
+
+        if (this._isSubscriber() && this.showFiltersBtn) {
+            this.showFiltersBtn.hide();
+        }
+
         this.fireEvent('ready', this);
     },
 
@@ -612,6 +738,27 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }, this);
         // apply any settings config to each field added by the plugin
         return pluginSettingsFields.concat(fields || []);
+    },
+
+    // When changing projects, if a release filter was previously applied, the inline filter state remembers the release
+    // filter, but fails to populate the comobobox with the release name, which becomes misleading to 
+    // the end user. This hack finds the release name and shoves it into the combobox.
+    _updateReleaseValues: function () {
+        _.each(this.filterControls, function (filter) {
+            _.each(filter.inlineFilterButton.inlineFilterPanel.advancedFilterPanel.advancedFilterRows.rows, function (row) {
+                if (row.name === 'Release' && row._valueFieldIsValid()) {
+                    _.each(row.items.items, function (rowItem) {
+                        if (rowItem.xtype === 'rallyreleasecombobox') {
+                            this._getRelease(rowItem.originalValue).then(function (release) {
+                                if (release) {
+                                    rowItem.rawValue = release.Name;
+                                }
+                            });
+                        }
+                    }, this);
+                }
+            }, this);
+        }, this);
     },
 
     // Requires that app settings are available (e.g. from 'beforelaunch')
@@ -960,6 +1107,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _ignoreProjectScope: function () {
+        if (this._isSubscriber()) {
+            return this.publishedValue.ignoreProjectScope;
+        }
+
         var result = false;
         if (this._showIgnoreProjectScopeControl()) {
             // If the control is shown, that values overrides the ignoreScope app setting
@@ -1081,6 +1232,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                     plain: true,
                                     autoRender: true,
                                     hidden: this._isSubscriber(),
+                                    hideMode: 'offsets',
                                     items: []
                                 });
 
@@ -1092,6 +1244,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                         this.filterControls.push(Ext.create('Rally.ui.inlinefilter.InlineFilterControl', {
                                             xtype: 'rallyinlinefiltercontrol',
                                             name: filterName,
+                                            autoRender: true,
                                             stateful: true,
                                             stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}-control`),
                                             itemId: filterName,
@@ -1103,6 +1256,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                                 modelNames: key,
                                                 filterChildren: this.filterChildren,
                                                 inlineFilterPanelConfig: {
+                                                    autoRender: true,
                                                     name: `${filterName}-panel`,
                                                     itemId: `${filterName}-panel`,
                                                     model: model,
