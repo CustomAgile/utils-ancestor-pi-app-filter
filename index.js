@@ -127,7 +127,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Array}
          * Field list for multi-level filter panel
          */
-        defaultFilterFields: ['ArtifactSearch', 'Owner'],
+        defaultFilterFields: ['Owner'],
 
         /**
          * @cfg {Boolean}
@@ -191,7 +191,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // We don't want chevrons in the tab panel
             _alignChevron: function () {
                 if (this.chevron) { this.chevron.hide(); }
-            }
+            },
+
+            // Don't create the close buttons
+            _createCloseButton: function () { }
         });
 
         // Add the control components then fire ready
@@ -280,80 +283,21 @@ Ext.define('Utils.AncestorPiAppFilter', {
         let keys = Object.keys(multiLevelFilters);
 
         for (let i = 0; i < keys.length; i++) {
-            let key = keys[i];
-            let val = multiLevelFilters[key];
+            let currentType = keys[i];
+            let currentFilters = multiLevelFilters[currentType];
 
-            if (val.length) {
+            if (currentFilters.length) {
                 // If scoping all projects, filter releases by name instead of value
-                await this._convertReleaseFilters(val);
+                await this._convertReleaseFilters(currentFilters);
 
-                if (modelName === key.toLowerCase()) {
-                    filters = filters.concat(val);
+                // If we're at the given level, just add the filters
+                if (modelName === currentType.toLowerCase()) {
+                    filters = filters.concat(currentFilters);
                 }
+                // If we're at a level above the given level, convert filters to fit given level
                 else {
-                    let pisAbove = this._piTypeAncestors(modelName, key);
-
-                    if (pisAbove !== null) {
-                        let property = this._propertyPrefix(modelName, pisAbove);
-                        if (property) {
-                            let currentLevelFilters = [];
-                            let currentLevelFiltersWithoutParentPrefix = [];
-                            let hasCustomFieldFilters = false;
-                            _.each(val, function (filter) {
-                                // Rally has a hard time filtering on custom dropdown fields on parents so
-                                // we check to see if any are applied
-                                if (filter.property.indexOf('c_') !== -1 && typeof filter.value === 'string') {
-                                    hasCustomFieldFilters = true;
-                                }
-
-                                // List of filters if custom field filters exist
-                                currentLevelFiltersWithoutParentPrefix.push(new Rally.data.wsapi.Filter({
-                                    property: filter.property,
-                                    operator: filter.operator,
-                                    value: filter.value
-                                }));
-
-                                // List of filters if no custom field filters exist
-                                currentLevelFilters.push(new Rally.data.wsapi.Filter({
-                                    property: `${property}.${filter.property}`,
-                                    operator: filter.operator,
-                                    value: filter.value
-                                }));
-                            }.bind(this));
-
-                            // If filters on custom fields exist, lets get a list of IDs at that level and use those IDs as our filter
-                            if (hasCustomFieldFilters) {
-                                let parentIDs = [];
-                                try {
-                                    parentIDs = await new Promise(function (resolve) { this._getFilteredIds(currentLevelFiltersWithoutParentPrefix, key, resolve); }.bind(this));
-                                    if (parentIDs.length) {
-                                        filters.push(new Rally.data.wsapi.Filter({
-                                            property: property + '.ObjectID',
-                                            operator: 'in',
-                                            value: _.map(parentIDs, function (id) { return id.get('ObjectID'); })
-                                        }));
-                                    }
-                                    else {
-                                        filters.push(new Rally.data.wsapi.Filter({
-                                            property: property + '.ObjectID',
-                                            operator: '=',
-                                            value: 0
-                                        }));
-                                    }
-                                }
-                                catch (e) {
-                                    return [new Rally.data.wsapi.Filter({
-                                        property: property + '.ObjectID',
-                                        operator: '=',
-                                        value: 0
-                                    })];
-                                }
-                            }
-                            else {
-                                filters = filters.concat(currentLevelFilters);
-                            }
-                        }
-                    }
+                    let parentFilters = await this._getParentFilters(modelName, currentType, currentFilters);
+                    filters = filters.concat(parentFilters);
                 }
             }
         }
@@ -361,7 +305,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // If building a hierarchy from top level down, we don't need to include filters
         // below the given type (e.g. a timeline app). Otherwise if being used for an app
         // that only displays one PI type, we need to include those lower filters
-        if (includeFiltersBelowType) {
+        if (includeFiltersBelowType && Ext.String.startsWith(type.toLowerCase(), 'portfolioitem')) {
             let childFilter = await this._getChildFiltersForType(type, multiLevelFilters);
             if (childFilter) {
                 filters.push(childFilter);
@@ -408,22 +352,43 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return filters;
     },
 
+    // Starting at the lowest PI type, get a list of IDs that fit the given filter. 
+    // Traverse up the PI hierarchy until reaching the given type and return a list of IDs
+    // for that type that fit all filters from below
+    // Returns an array of object IDs
     _getChildFiltersForType: async function (type, filters) {
         let idFilter;
         // PI types are in order lowest to highest
         for (let i = 0; i < this.portfolioItemTypes.length; i++) {
             let currentType = this.portfolioItemTypes[i].get('TypePath');
+            let currentFilter = filters[currentType];
             if (currentType.toLowerCase() === type.toLowerCase()) {
                 break;
             }
-            if ((filters[currentType] && filters[currentType].length) || idFilter) {
-                if (!filters[currentType]) {
-                    filters[currentType] = [];
+            if ((currentFilter && currentFilter.length) || idFilter) {
+                if (!currentFilter) {
+                    currentFilter = [];
                 }
                 if (idFilter) {
-                    filters[currentType].push(idFilter);
+                    currentFilter.push(idFilter);
                 }
-                let records = await new Promise(function (resolve) { this._getFilteredIds(filters[currentType], currentType, resolve); }.bind(this));
+
+                // To reduce the number of results returned, we include filters of higher level PI types
+                for (let j = i + 1; j < this.portfolioItemTypes.length; j++) {
+                    let parentType = this.portfolioItemTypes[j].get('TypePath');
+                    let parentFilters = await this._getParentFilters(currentType, parentType, filters[parentType]);
+                    currentFilter = currentFilter.concat(parentFilters);
+                }
+
+                let ancestor = this.getAncestorFilterForType(type);
+                if (ancestor && ancestor.value) {
+                    currentFilter.push(ancestor);
+                }
+
+                let records = await new Promise(function (resolve, reject) { this._getFilteredIds(currentFilter, currentType, resolve, reject); }.bind(this)).catch((e) => {
+                    throw new Error(e);
+                });
+
                 if (records.length) {
                     let parents = _.map(records, function (id) { return (id.get('Parent') && id.get('Parent').ObjectID) || 0; });
                     idFilter = new Rally.data.wsapi.Filter({
@@ -444,11 +409,77 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return idFilter;
     },
 
-    // removeInvalidFilters: function () {
-    //     _.each(this.filterControls, function (filterControl) {
-    //         filterControl.inlineFilterButton._removeInvalidFilters();
-    //     }, this);
-    // },
+    // Given a type and a parent type and array of parent filters, convert the filters
+    // to apply to the given type
+    _getParentFilters: async function (type, parentType, parentFilters) {
+        let pisAbove = this._piTypeAncestors(type, parentType);
+
+        if (pisAbove !== null) {
+            let parentProperty = this._propertyPrefix(type, pisAbove);
+            if (parentProperty) {
+                let currentLevelFilters = [];
+                let hasCustomFieldFilters = this._hasCustomFilters(parentFilters);
+                _.each(parentFilters, function (filter) {
+                    let prop = filter.property;
+                    if (!hasCustomFieldFilters) {
+                        prop = `${parentProperty}.${prop}`;
+                    }
+
+                    currentLevelFilters.push(new Rally.data.wsapi.Filter({
+                        property: prop,
+                        operator: filter.operator,
+                        value: filter.value
+                    }));
+                }.bind(this));
+
+                // If filters on custom fields exist, lets get a list of IDs at that level and use those IDs as our filter
+                if (hasCustomFieldFilters) {
+                    let parentIDs = [];
+                    try {
+                        parentIDs = await new Promise(function (resolve, reject) { this._getFilteredIds(currentLevelFilters, parentType, resolve, reject); }.bind(this)).catch((e) => {
+                            throw new Error(e);
+                        });
+                        if (parentIDs.length) {
+                            return new Rally.data.wsapi.Filter({
+                                property: parentProperty + '.ObjectID',
+                                operator: 'in',
+                                value: _.map(parentIDs, function (id) { return id.get('ObjectID'); })
+                            });
+                        }
+                        else {
+                            return new Rally.data.wsapi.Filter({
+                                property: parentProperty + '.ObjectID',
+                                operator: '=',
+                                value: 0
+                            });
+                        }
+                    }
+                    catch (e) {
+                        return [new Rally.data.wsapi.Filter({
+                            property: parentProperty + '.ObjectID',
+                            operator: '=',
+                            value: 0
+                        })];
+                    }
+                }
+                else {
+                    return currentLevelFilters;
+                }
+            }
+        }
+        return [];
+    },
+
+    _hasCustomFilters: function (filters) {
+        for (let filter of filters) {
+            // Rally has a hard time filtering on custom dropdown fields on parents (probably
+            // not indexed) so we check to see if any are applied
+            if (filter.property.indexOf('c_') !== -1 && typeof filter.value === 'string') {
+                return true;
+            }
+        }
+        return false;
+    },
 
     // Takes an array of filters. If scoping across all projects, we need to update any release
     // filters to filter on the release name rather than the release value
@@ -543,10 +574,15 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     // Returns an array of records fitting the given filters
-    _getFilteredIds: function (filters, model, resolve) {
+    _getFilteredIds: function (filters, model, resolve, reject) {
         let dataContext = Rally.getApp().getContext().getDataContext();
         if (this.getIgnoreProjectScope()) {
             dataContext.project = null;
+        }
+
+        let ancestor = this.getAncestorFilterForType(model);
+        if (ancestor && ancestor.value) {
+            filters.push(ancestor);
         }
 
         let store = Ext.create('Rally.data.wsapi.Store', {
@@ -555,7 +591,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
             filters,
             model,
             fetch: ['ObjectID', 'Parent'],
-            limit: Infinity
+            limit: Infinity,
+            enablePostGet: true
         });
 
         store.load().then({
@@ -564,8 +601,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 resolve(records);
             },
             failure: function () {
-                Rally.ui.notify.Notifier.showError({ message: 'Multi-level filter failed while filtering out items below selected portfolio item type. Result set was probably too large.' });
-                resolve([]);
+                //Rally.ui.notify.Notifier.showError({ message: 'Multi-level filter failed while filtering out items above or below selected portfolio item type. Result set was probably too large.' });
+                reject('Multi-level filter failed while filtering out items above or below selected portfolio item type. Result set was probably too large.');
+                //resolve([]);
+                // reject('Multi-level filter failed while filtering out items above or below selected portfolio item type. Result set was probably too large.'); // TODO REJECT!!!!!
             }
         });
     },
@@ -633,7 +672,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     var selectedPi = this.piSelector.getValue();
                     _.merge(result, {
                         piTypePath: selectedPiTypePath,
-                        isPiSelected: !!selectedRecord,
+                        isPiSelected: !!selectedPi,
                         pi: selectedPi,
                         piRecord: selectedRecord
                     });
@@ -1038,8 +1077,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         project: null
                     }
                 },
-                queryDelay: 7000,
-                autoSelectCurrentItem: false,
+                queryDelay: 2000,
+                typeAhead: false,
+                validateOnChange: false,
                 stateful: true,
                 stateId: this.cmp.getContext().getScopedStateId('Utils.AncestorPiAppFilter.piSelector'),
                 stateEvents: ['select'],
@@ -1138,7 +1178,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         else if (typeName === 'defect') {
             property = 'Requirement.' + piTypesAbove[0].get('Name');
         }
-        else if (Ext.String.startsWith(typeName, 'portfolioitem')) {
+        else if (Ext.String.startsWith(typeName.toLowerCase(), 'portfolioitem')) {
             property = 'Parent';
         }
 
@@ -1170,7 +1210,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             });
             result = this.portfolioItemTypes.slice(0, selectedPiTypeIndex + 1);
         }
-        else if (Ext.String.startsWith(modelName, 'portfolioitem')) {
+        else if (Ext.String.startsWith(modelName.toLowerCase(), 'portfolioitem')) {
             modelNamePiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
                 return piType.get('TypePath').toLowerCase() === modelName.toLowerCase();
             });
@@ -1237,6 +1277,25 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                 });
 
                                 this.filterControls = [];
+                                let clearAdvancedButtonConfig = {};
+                                let matchTypeConfig = {};
+                                let advancedFilterRowsFlex = 1;
+                                let propertyFieldConfig = {
+                                    blackListFields: this.blackListFields,
+                                    whiteListFields: this.whiteListFields
+                                };
+
+                                if (this.cmp.getWidth() < this.singleRowMinWidth) {
+                                    clearAdvancedButtonConfig = {
+                                        text: 'Clear'
+                                    };
+                                    matchTypeConfig = {
+                                        fieldLabel: 'Match',
+                                        width: 65
+                                    };
+                                    propertyFieldConfig.width = 100;
+                                    advancedFilterRowsFlex = 2;
+                                }
 
                                 _.each(models, function (model, key) {
                                     promises.push(new Promise(function (newResolve) {
@@ -1273,12 +1332,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                                     advancedFilterPanelConfig: {
                                                         collapsed: this.advancedFilterCollapsed,
                                                         advancedFilterRowsConfig: {
-                                                            propertyFieldConfig: {
-                                                                blackListFields: this.blackListFields,
-                                                                whiteListFields: this.whiteListFields
-                                                            }
-                                                        }
-                                                    },
+                                                            propertyFieldConfig,
+                                                            flex: advancedFilterRowsFlex
+                                                        },
+                                                        matchTypeConfig,
+                                                        clearAdvancedButtonConfig
+                                                    }
                                                 },
                                                 listeners: {
                                                     inlinefilterchange: this._onFilterChange,
