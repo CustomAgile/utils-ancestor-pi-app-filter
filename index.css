@@ -28,14 +28,11 @@
   .blue-tabs .x-tab-bar .x-tab-default .x-tab-icon-el {
     color: white;
   }
-
-  .customagile-button { 
+  
+  .filter-help { 
     left: auto !important;
     margin-top: 0;
     border-color: #d6d6d6 !important;
-  }
-  
-  .customagile-button.help { 
     right: 10px !important;
   }
   
@@ -45,24 +42,15 @@
     color: #327c98 !important;
   }
   
-  .icon-help {
-    font-size: 18px;
-  }
-  
   .icon-help:hover {
     color: #21516d !important;
   }
   
-  .customagile-button.help:hover {
-    color: #21516d !important;
+  .filter-help .x-btn-button {
+    height: 18px !important;
+    width: 18px !important;
   }
   
-  .customagile-button.help .x-btn-button {
-    font-size: 20px !important;
-    height: 20px !important;
-    width: 20px !important;
-  }
-
   .filter-help-list li{
     padding-bottom: 6px;
   }
