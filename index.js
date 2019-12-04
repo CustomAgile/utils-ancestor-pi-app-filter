@@ -1,6 +1,33 @@
+Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
+    extend: 'Rally.ui.Button',
+    alias: 'widget.multifiltertogglebtn',
+
+    stateful: true,
+
+    config: {
+        iconCls: 'icon-filter'
+    },
+
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+
+    getState: function () {
+        return {
+            filtersHidden: this.filtersHidden
+        };
+    },
+
+    setFiltersHidden: function (filtersHidden) {
+        this.filtersHidden = filtersHidden;
+        this.saveState();
+    }
+});
+
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.0.8",
+    version: "1.0.9",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -259,13 +286,11 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 });
             }
         }
-
         return filter;
     },
 
     // Returns an array containing all of the filters applied in the
-    // multi-level filter as well as the selected ancestor PI if one
-    // is selected. 
+    // multi-level filter as well as the selected ancestor PI if one is selected. 
     // type is the TypeDefinition.TypePath for the Portfolio Item level you wish to fetch.
     getAllFiltersForType: async function (type, includeFiltersBelowType) {
         let ancestorFilter = this.getAncestorFilterForType(type);
@@ -316,7 +341,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 filters.push(childFilter);
             }
         }
-
         return filters;
     },
 
@@ -336,7 +360,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 filters = filters.concat(val);
             }
         }
-
         return filters;
     },
 
@@ -353,7 +376,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
             let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
             filters[typeName] = filterControl.inlineFilterButton.getFilters();
         });
-
         return filters;
     },
 
@@ -363,7 +385,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // Returns an array of object IDs
     _getChildFiltersForType: async function (type, filters) {
         let idFilter;
-
         let types = this._getAllTypePaths();
 
         // PI types are in order lowest to highest
@@ -397,7 +418,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     currentFilter.push(ancestor);
                 }
 
-                let records = await new Promise(function (resolve, reject) { this._getFilteredIds(currentFilter, currentType, resolve, reject); }.bind(this)).catch((e) => {
+                let records = await new Promise(function (resolve, reject) {
+                    this._getFilteredIds(currentFilter, currentType, resolve, reject);
+                }.bind(this)).catch((e) => {
                     Rally.ui.notify.Notifier.showError({ message: e });
                     return new Rally.data.wsapi.Filter({
                         property: 'ObjectID',
@@ -407,7 +430,11 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 });
 
                 if (records.length) {
-                    let parents = _.map(records, function (id) { return (id.get('Parent') && id.get('Parent').ObjectID) || (id.get('Feature') && id.get('Feature').ObjectID) || 0; });
+                    let parents = _.map(records, function (id) {
+                        return (id.get('Parent') && id.get('Parent').ObjectID) ||
+                            (id.get('Feature') && id.get('Feature').ObjectID) || 0;
+                    });
+
                     idFilter = new Rally.data.wsapi.Filter({
                         property: 'ObjectID',
                         operator: 'in',
@@ -553,6 +580,24 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return this._getValue().ignoreProjectScope;
     },
 
+    getCurrentView: function () {
+        var ancestorData = this._getValue();
+        // Delete piRecord to avoid recursive stack overflow error
+        delete ancestorData.piRecord;
+        return ancestorData;
+    },
+
+    setCurrentView: function (view) {
+        let scopeControl = this.renderArea.down('#ignoreScopeControl');
+        if (scopeControl) {
+            scopeControl.suspendEvents(false);
+            scopeControl.setValue(view.ignoreProjectScope);
+            scopeControl.resumeEvents();
+        }
+        this.setMultiLevelFilterStates(view.filterStates);
+        this._setPiSelector(view.piTypePath, view.pi);
+    },
+
     // Returns an object of states for all of the inline filters
     // Used for getting and setting shared views
     getMultiLevelFilterStates: function () {
@@ -587,7 +632,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     for (let i = 0;i < this.filterControls.length;i++) {
                         let typeName = (this.filterControls[i].inlineFilterButton.modelNames) || 'unknown';
                         if (typeName === key) {
-                            this.filterControls[i].inlineFilterButton.applyState(states[key]);
+                            let filterBtn = this.filterControls[i].inlineFilterButton;
+                            filterBtn.applyState(states[key]);
                         }
                     }
                 }
@@ -674,10 +720,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
         });
 
         return deferred.promise;
-    },
-
-    _getLowestFilteredOrdinal: function () {
-
     },
 
     _setupPubSub: function () {
@@ -1201,14 +1243,19 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
     _setPiSelector: function (piType, pi) {
         return new Promise(function (resolve) {
-            this.piTypeSelector.suspendEvents(false);
-            this.piTypeSelector.setValue(piType);
-            this._removePiSelector();
-            this._addPiSelector(piType, pi).then(function () {
-                this.piSelector.setValue(pi);
-                this.piTypeSelector.resumeEvents();
+            if (this.piTypeSelector) {
+                this.piTypeSelector.suspendEvents(false);
+                this.piTypeSelector.setValue(piType);
+                this._removePiSelector();
+                this._addPiSelector(piType, pi).then(function () {
+                    this.piSelector.setValue(pi);
+                    this.piTypeSelector.resumeEvents();
+                    resolve();
+                }.bind(this));
+            }
+            else {
                 resolve();
-            }.bind(this));
+            }
         }.bind(this));
     },
 
@@ -1319,12 +1366,23 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     if (!this._isSubscriber()) {
                         this.showFiltersBtn = this.btnRenderArea.add(
                             {
-                                xtype: 'rallybutton',
-                                cls: this.filtersHidden ? 'secondary' : 'primary' + ' rly-small',
-                                iconCls: 'icon-filter',
-                                toolTipText: + this.filtersHidden ? 'Show' : 'Hide' + ' Filters',
+                                xtype: 'multifiltertogglebtn',
+                                cls: ' rly-small',
                                 handler: this._toggleFilters,
-                                scope: this
+                                scope: this,
+                                stateId: this.cmp.getContext().getScopedStateId(`multi-filter-toggle-button`),
+                                listeners: {
+                                    added: function (btn) {
+                                        if (btn.filtersHidden) {
+                                            btn.addCls('secondary');
+                                            btn.setToolTipText('Show Filters');
+                                        }
+                                        else {
+                                            btn.addCls('primary');
+                                            btn.setToolTipText('Hide Filters');
+                                        }
+                                    }
+                                }
                             }
                         );
 
@@ -1348,7 +1406,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                     minTabWidth: 100,
                                     plain: true,
                                     autoRender: true,
-                                    hidden: this._isSubscriber(),
+                                    hidden: this._isSubscriber() || this.showFiltersBtn.filtersHidden,
                                     hideMode: 'offsets',
                                     items: []
                                 });
@@ -1361,6 +1419,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                     blackListFields: this.blackListFields,
                                     whiteListFields: this.whiteListFields
                                 };
+                                let context = this.cmp.getContext();
 
                                 if (this.cmp.getWidth() < this.singleRowMinWidth) {
                                     clearAdvancedButtonConfig = {
@@ -1381,13 +1440,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                             xtype: 'rallyinlinefiltercontrol',
                                             name: filterName,
                                             autoRender: true,
-                                            stateful: true,
-                                            stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}-control`),
                                             itemId: filterName,
-                                            context: this.cmp.getContext(),
+                                            context,
                                             inlineFilterButtonConfig: {
                                                 stateful: true,
-                                                stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}`),
+                                                stateId: this.cmp.getContext().getScopedStateId(`multi-${filterName}-button`),
+                                                stateEvents: ['inlinefilterchange'],
                                                 context: this.cmp.getContext(),
                                                 modelNames: key,
                                                 filterChildren: this.filterChildren,
@@ -1398,7 +1456,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                                     model: model,
                                                     padding: 5,
                                                     width: '98%',
-                                                    context: this.cmp.getContext(),
+                                                    context,
                                                     quickFilterPanelConfig: {
                                                         defaultFields: this.defaultFilterFields,
                                                         addQuickFilterConfig: {
@@ -1604,11 +1662,13 @@ Ext.define('Utils.AncestorPiAppFilter', {
             btn.setToolTipText('Hide Filters');
             btn.addCls('primary');
             btn.removeCls('secondary');
+            btn.setFiltersHidden(false);
         } else {
             this.tabPanel.hide();
             btn.setToolTipText('Show Filters');
             btn.addCls('secondary');
             btn.removeCls('primary');
+            btn.setFiltersHidden(true);
         }
     },
 
