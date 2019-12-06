@@ -626,7 +626,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // Used when applying a shared view to the filters
     setMultiLevelFilterStates: function (states) {
         if (!this._isSubscriber()) {
-            this.tabPanel.removeAll();
+            if (this.tabPanel) {
+                this.tabPanel.removeAll();
+            }
             for (let key in states) {
                 if (states.hasOwnProperty(key)) {
                     for (let i = 0;i < this.filterControls.length;i++) {
