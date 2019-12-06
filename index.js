@@ -1036,6 +1036,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 cls: 'filter-help',
                 iconOnly: true,
                 iconCls: 'icon-help',
+                hidden: this._isSubscriber() || !this._showMultiLevelFilter(),
                 handler: (...args) => this.onHelpClicked(...args)
             });
         }
