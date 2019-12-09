@@ -27,7 +27,7 @@ Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
 
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.0.9",
+    version: "1.1.0",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -227,10 +227,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         });
 
         // Add the control components then fire ready
-        Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
+        this._getTypeDefinitions().then({
             scope: this,
-            success: function (piTypes) {
-                this.portfolioItemTypes = piTypes;
+            success: function () {
                 Promise.all([this._addAncestorControls(), this._addFilters()]).then(
                     function () {
                         this._setReady();
@@ -245,6 +244,42 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 Rally.ui.notify.Notifier.showError({ message: 'Failed to fetch portfolio item types for multi-level filter' });
             }
         });
+    },
+
+    _getTypeDefinitions: function () {
+        let def = Ext.create('Deft.Deferred');
+
+        Rally.data.util.PortfolioItemHelper.getPortfolioItemTypes().then({
+            scope: this,
+            success: function (piTypes) {
+                this.portfolioItemTypes = piTypes;
+
+                Ext.create('Rally.data.wsapi.Store', {
+                    model: Ext.identityFn('TypeDefinition'),
+                    fetch: ['Name', 'Ordinal', 'TypePath'],
+                    requester: this,
+                    filters: [{ property: 'Name', value: 'Hierarchical Requirement' }]
+                }).load({
+                    scope: this,
+                    callback: function (records, operation, success) {
+                        if (success) {
+                            if (records && records.length) {
+                                this.storyType = records[0];
+                                this.allTypes = [this.storyType].concat(this.portfolioItemTypes);
+                                def.resolve();
+                            }
+                            else { def.reject(); }
+                        }
+                        else { def.reject(); }
+                    }
+                });
+            },
+            failure: function () {
+                def.reject();
+            }
+        });
+
+        return def.promise;
     },
 
     notifySubscribers: function (changeType) {
@@ -267,9 +302,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
             var selectedPiTypePath = currentValues.piTypePath;
             var selectedRecord = currentValues.isPiSelected;
             var selectedPi = currentValues.pi;
-            var pisAbove = this._piTypeAncestors(modelName, selectedPiTypePath);
-            if (selectedRecord && selectedPi !== null && pisAbove !== null) {
-                var property = this._propertyPrefix(modelName, pisAbove);
+            var typesAbove = this._getAncestorTypeArray(modelName, selectedPiTypePath);
+            if (selectedRecord && selectedPi !== null && typesAbove !== null) {
+                var property = this._getPropertyPrefix(modelName, typesAbove);
                 if (property) {
                     filter = new Rally.data.wsapi.Filter({
                         property: property,
@@ -413,11 +448,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     }
                 }
 
-                let ancestor = this.getAncestorFilterForType(type);
-                if (ancestor && ancestor.value) {
-                    currentFilter.push(ancestor);
-                }
-
                 let records = await new Promise(function (resolve, reject) {
                     this._getFilteredIds(currentFilter, currentType, resolve, reject);
                 }.bind(this)).catch((e) => {
@@ -456,10 +486,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // Given a type and a parent type and array of parent filters, convert the filters
     // to apply to the given type
     _getParentFilters: async function (type, parentType, parentFilters) {
-        let pisAbove = this._piTypeAncestors(type, parentType);
+        let typesAbove = this._getAncestorTypeArray(type, parentType);
 
-        if (pisAbove !== null) {
-            let parentProperty = this._propertyPrefix(type, pisAbove);
+        if (typesAbove !== null) {
+            let parentProperty = this._getPropertyPrefix(type, typesAbove);
             if (parentProperty) {
                 let currentLevelFilters = [];
                 let hasCustomFieldFilters = this._hasCustomFilters(parentFilters);
@@ -620,6 +650,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
     getPortfolioItemTypes: function () {
         return this.portfolioItemTypes;
+    },
+
+    getLowestPortfolioItemType: function () {
+        return this.portfolioItemTypes[0];
     },
 
     // Sets the states of the inline filters
@@ -1294,14 +1328,19 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return this.cmp.getSetting('Utils.AncestorPiAppFilter.defaultPiType');
     },
 
-    _propertyPrefix: function (typeName, piTypesAbove) {
+    _getPropertyPrefix: function (typeName, typesAbove) {
         let type = typeName.toLowerCase();
-        var property;
+        let property;
+
         if (type === 'hierarchicalrequirement' || type === 'userstory') {
-            property = piTypesAbove[0].get('Name');
+            property = this.getLowestPortfolioItemType().get('Name');
         }
         else if (type === 'defect') {
-            property = 'Requirement.' + piTypesAbove[0].get('Name');
+            property = 'Requirement';
+            typesAbove = typesAbove.slice(1);
+            if (typesAbove.length) {
+                property += `.${this.getLowestPortfolioItemType().get('Name')}`;
+            }
         }
         else if (Ext.String.startsWith(type, 'portfolioitem')) {
             property = 'Parent';
@@ -1311,8 +1350,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // property already gets us to the lowest pi level above the current type
             // for each additional level, add a 'Parent' term, except for the last
             // type in the list which is the currently selected pi type ancestor
-            _.forEach(piTypesAbove.slice(1), function () {
-                property = property + '.Parent';
+            _.forEach(typesAbove.slice(1), function () {
+                property += '.Parent';
             }, this);
         }
 
@@ -1320,38 +1359,37 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     /**
-     * Return a list of portfolio item types AT or below the selected pi type,
+     * Return a list of artifact types AT or below the selected artifact type,
      * that are an ancestor of the given model, or null if there are no pi type
      * ancestors for the given model.
      */
-    _piTypeAncestors: function (modelName, selectedPiTypePath) {
-        var result = null;
+    _getAncestorTypeArray: function (modelName, selectedPiTypePath) {
         var selectedPiTypeIndex;
         var modelNamePiTypeIndex;
         var model = modelName.toLowerCase();
+        var selectedModel = selectedPiTypePath.toLowerCase();
 
-        if (_.contains(['hierarchicalrequirement', 'userstory', 'defect'], model)) {
-            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
-                return piType.get('TypePath').toLowerCase() === selectedPiTypePath.toLowerCase();
+        if (model === 'defect') {
+            selectedPiTypeIndex = _.findIndex(this.allTypes, function (type) {
+                return type.get('TypePath').toLowerCase() === selectedModel;
             });
-            result = this.portfolioItemTypes.slice(0, selectedPiTypeIndex + 1);
-        }
-        else if (Ext.String.startsWith(model, 'portfolioitem')) {
-            modelNamePiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
-                return piType.get('TypePath').toLowerCase() === model;
-            });
-            selectedPiTypeIndex = _.findIndex(this.portfolioItemTypes, function (piType) {
-                return piType.get('TypePath').toLowerCase() === selectedPiTypePath.toLowerCase();
-            });
-
-            if (modelNamePiTypeIndex < selectedPiTypeIndex) {
-                // Don't include the current model pi in the list of ancestors
-                // Include the selcted pi type ancestor
-                result = this.portfolioItemTypes.slice(modelNamePiTypeIndex + 1, selectedPiTypeIndex + 1);
-            }
+            return this.allTypes.slice(0, selectedPiTypeIndex + 1);
         }
 
-        return result;
+        modelNamePiTypeIndex = _.findIndex(this.allTypes, function (type) {
+            return type.get('TypePath').toLowerCase() === model;
+        });
+        selectedPiTypeIndex = _.findIndex(this.allTypes, function (type) {
+            return type.get('TypePath').toLowerCase() === selectedModel;
+        });
+
+        if (modelNamePiTypeIndex < selectedPiTypeIndex) {
+            // Don't include the current model pi in the list of ancestors
+            // Include the selcted pi type ancestor
+            return this.allTypes.slice(modelNamePiTypeIndex + 1, selectedPiTypeIndex + 1);
+        }
+
+        return null;
     },
 
     /*
@@ -1389,14 +1427,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                             }
                         );
 
-                        var piTypePaths = _.map(this.portfolioItemTypes, function (piType) {
-                            return piType.get('TypePath');
-                        });
-                        piTypePaths.reverse();
-                        piTypePaths.push('HierarchicalRequirement');
-
                         Rally.data.ModelFactory.getModels({
-                            types: piTypePaths,
+                            types: this._getAllTypePaths().reverse(),
                             context: this.cmp.getContext(),
                             scope: this,
                             success: function (models) {
@@ -1676,13 +1708,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _getAllTypePaths: function () {
-        let types = ['HierarchicalRequirement'];
-
-        types = types.concat(_.map(this.portfolioItemTypes, (type) => {
+        return _.map(this.allTypes, (type) => {
             return type.get('TypePath');
-        }));
-
-        return types;
+        });
     },
 
     /**

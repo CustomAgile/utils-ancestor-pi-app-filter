@@ -1,56 +1,56 @@
 .blue-tabs .x-tab-bar .x-tab-default {
-    background-color: white;
-    border-radius: 4px 4px 0 0;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-default .x-tab-inner {
-    color: #00a9e0;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-active {
-    background-color: #00a9e0;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-active .x-tab-inner {
-    color: white;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-default .x-tab-inner {
-    text-overflow: initial;
-    -o-text-overflow: initial;
-    overflow: initial;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-inner {
-    width: 100%;
-  }
-  
-  .blue-tabs .x-tab-bar .x-tab-default .x-tab-icon-el {
-    color: white;
-  }
-  
-  .filter-help { 
-    left: auto !important;
-    margin-top: 0;
-    border-color: #d6d6d6 !important;
-    right: 10px !important;
-  }
-  
-  .icon-help {
-    font-size: 16px;
-    text-align: center;
-    color: #327c98 !important;
-  }
-  
-  .icon-help:hover {
-    color: #21516d !important;
-  }
-  
-  .filter-help .x-btn-button {
-    height: 18px !important;
-    width: 18px !important;
-  }
-  
-  .filter-help-list li{
-    padding-bottom: 6px;
-  }
+  background-color: white;
+  border-radius: 4px 4px 0 0;
+}
+
+.blue-tabs .x-tab-bar .x-tab-default .x-tab-inner {
+  color: #00a9e0;
+}
+
+.blue-tabs .x-tab-bar .x-tab-active {
+  background-color: #00a9e0;
+}
+
+.blue-tabs .x-tab-bar .x-tab-active .x-tab-inner {
+  color: white;
+}
+
+.blue-tabs .x-tab-bar .x-tab-default .x-tab-inner {
+  text-overflow: initial;
+  -o-text-overflow: initial;
+  overflow: initial;
+}
+
+.blue-tabs .x-tab-bar .x-tab-inner {
+  width: 100%;
+}
+
+.blue-tabs .x-tab-bar .x-tab-default .x-tab-icon-el {
+  color: white;
+}
+
+.filter-help { 
+  left: auto !important;
+  margin-top: 0;
+  border-color: #d6d6d6 !important;
+  right: 10px !important;
+}
+
+.icon-help {
+  font-size: 16px;
+  text-align: center;
+  color: #327c98 !important;
+}
+
+.icon-help:hover {
+  color: #21516d !important;
+}
+
+.filter-help .x-btn-button {
+  height: 18px !important;
+  width: 18px !important;
+}
+
+.filter-help-list li{
+  padding-bottom: 6px;
+}
