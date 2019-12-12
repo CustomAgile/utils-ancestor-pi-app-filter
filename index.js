@@ -51,7 +51,7 @@ Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
 
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.1.3",
+    version: "1.1.4",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -873,7 +873,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             }
 
             if (!this.publishedValue.filters) {
-                setInterval(function () {
+                setTimeout(function () {
                     this.ready = true;
                     this.fireEvent('ready', this);
                 }.bind(this), 800);
