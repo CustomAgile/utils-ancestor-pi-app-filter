@@ -1,3 +1,27 @@
+Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
+    _getBaseEditorConfig: function (fieldDef, context, model) {
+        if (fieldDef.name === "CreatedBy") {
+            let editorConfig = {
+                xtype: "rallyusersearchcombobox",
+                fieldLabel: fieldDef.displayName,
+                allowNoEntry: false,
+                valueField: '_uuidRef',
+                storeConfig: {
+                    models: [fieldDef.attributeDefinition.AllowedValueType._refObjectName],
+                    context: {
+                        workspace: context.getDataContext().workspace,
+                        project: null
+                    }
+                }
+            };
+
+            return editorConfig;
+        }
+
+        return this.callParent(arguments);
+    }
+});
+
 Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
     extend: 'Rally.ui.Button',
     alias: 'widget.multifiltertogglebtn',
@@ -27,7 +51,7 @@ Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
 
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.1.1",
+    version: "1.1.2",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -784,12 +808,14 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 }
                 this.publishedValue = data;
 
-                // Default to an ancestor change event for backwards compatibility
-                if (data.changeType === 'ancestor' || !data.changeType) {
-                    this._onSelect();
-                }
-                else {
-                    this._onChange();
+                if (this.ready) {
+                    // Default to an ancestor change event for backwards compatibility
+                    if (data.changeType === 'ancestor' || !data.changeType) {
+                        this._onSelect();
+                    }
+                    else {
+                        this._onChange();
+                    }
                 }
             }, this);
             // Attempt to register with a publisher (if one exists)
@@ -833,16 +859,28 @@ Ext.define('Utils.AncestorPiAppFilter', {
     _setReady: function () {
         this._updateReleaseValues();
 
+        if (this._isSubscriber()) {
+            if (this.tabPanel) {
+                this.tabPanel.hide();
+            }
+
+            if (this._isSubscriber() && this.showFiltersBtn) {
+                this.showFiltersBtn.hide();
+            }
+
+            if (this.down('#filterHelpBtn')) {
+                this.down('#filterHelpBtn').hide();
+            }
+
+            if (!this.publishedValue.filters) {
+                setInterval(function () {
+                    this.ready = true;
+                    this.fireEvent('ready', this);
+                }.bind(this), 800);
+                return;
+            }
+        }
         this.ready = true;
-
-        if (this._isSubscriber() && this.tabPanel) {
-            this.tabPanel.hide();
-        }
-
-        if (this._isSubscriber() && this.showFiltersBtn) {
-            this.showFiltersBtn.hide();
-        }
-
         this.fireEvent('ready', this);
     },
 
@@ -1010,6 +1048,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     {
                         xtype: 'container',
                         id: 'piSelectorArea',
+                        itemId: 'piSelectorArea',
                         layout: {
                             type: 'hbox',
                             align: 'middle',
@@ -1067,6 +1106,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             this.renderArea.add(controls);
             this.renderArea.add({
                 xtype: 'rallybutton',
+                itemId: 'filterHelpBtn',
                 cls: 'filter-help',
                 iconOnly: true,
                 iconCls: 'icon-help',
@@ -1202,7 +1242,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             this._removePiSelector();
             this._addPiSelector(newValue).then(
                 function () {
-                    this._setReady();
+                    // this._setReady();
                     // If an ancestor was selected it has now been cleared, so fire select event
                     if (currentPi) {
                         this._onSelect();
@@ -1213,6 +1253,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _removePiSelector: function () {
+        this.piSelector = null;
         this.renderArea.down('#piSelectorArea').removeAll(true);
     },
 
@@ -1221,6 +1262,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             this.piSelector = Ext.create('Rally.ui.combobox.ArtifactSearchComboBox', {
                 id: 'Utils.AncestorPiAppFilter.piSelector',
                 width: 250,
+                margin: '0 10 0 10',
                 labelAlign: 'top',
                 storeConfig: {
                     models: piType,
@@ -1241,7 +1283,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 clearValue: null,
                 allowNoEntry: this.allowNoEntry,
                 noEntryValue: '',
-                value: initialValue || '',
+                value: initialValue || null,
                 // forceSelection: false,
                 defaultSelectionPosition: null,
                 listeners: {
