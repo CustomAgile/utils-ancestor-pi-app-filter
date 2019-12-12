@@ -51,7 +51,7 @@ Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
 
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.1.2",
+    version: "1.1.3",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -868,8 +868,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 this.showFiltersBtn.hide();
             }
 
-            if (this.down('#filterHelpBtn')) {
-                this.down('#filterHelpBtn').hide();
+            if (this.renderArea.down('#filterHelpBtn')) {
+                this.renderArea.down('#filterHelpBtn').hide();
             }
 
             if (!this.publishedValue.filters) {
