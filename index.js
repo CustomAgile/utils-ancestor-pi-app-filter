@@ -1,3 +1,6 @@
+/*
+        TODO (AM) - Separate code into multiple smaller files
+*/
 Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
     _getBaseEditorConfig: function (fieldDef, context, model) {
         if (fieldDef.name === "CreatedBy") {
@@ -51,7 +54,7 @@ Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
 
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.1.4",
+    version: "1.1.5",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -431,10 +434,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }
 
         var filters = {};
-        _.each(this.filterControls, function (filterControl) {
-            let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
-            filters[typeName] = filterControl.inlineFilterButton.getFilters();
-        });
+        if (this.filterControls) {
+            _.each(this.filterControls, function (filterControl) {
+                let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
+                filters[typeName] = filterControl.inlineFilterButton.getFilters();
+            });
+        }
         return filters;
     },
 
@@ -643,13 +648,17 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
     setCurrentView: function (view) {
         let scopeControl = this.renderArea.down('#ignoreScopeControl');
-        if (scopeControl) {
+        if (scopeControl && typeof view.ignoreProjectScope === 'boolean') {
             scopeControl.suspendEvents(false);
             scopeControl.setValue(view.ignoreProjectScope);
             scopeControl.resumeEvents();
         }
+
         this.setMultiLevelFilterStates(view.filterStates);
-        this._setPiSelector(view.piTypePath, view.pi);
+
+        if (view.piTypePath) {
+            this._setPiSelector(view.piTypePath, view.pi);
+        }
     },
 
     // Returns an object of states for all of the inline filters
@@ -660,10 +669,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }
 
         var states = {};
-        _.each(this.filterControls, function (filterControl) {
-            let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
-            states[typeName] = filterControl.inlineFilterButton.getState();
-        });
+        if (this.filterControls) {
+            _.each(this.filterControls, function (filterControl) {
+                let typeName = (filterControl.inlineFilterButton.modelNames) || 'unknown';
+                states[typeName] = filterControl.inlineFilterButton.getState();
+            });
+        }
 
         return states;
     },
@@ -684,21 +695,62 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // Used when applying a shared view to the filters
     setMultiLevelFilterStates: function (states) {
         if (!this._isSubscriber()) {
-            if (this.tabPanel) {
-                this.tabPanel.removeAll();
+            if (states) {
+                if (this.tabPanel) {
+                    this.tabPanel.removeAll();
+                }
+                for (let key in states) {
+                    if (states.hasOwnProperty(key)) {
+                        for (let i = 0;i < this.filterControls.length;i++) {
+                            let typeName = (this.filterControls[i].inlineFilterButton.modelNames) || 'unknown';
+                            if (typeName === key) {
+                                let filterBtn = this.filterControls[i].inlineFilterButton;
+                                filterBtn.applyState(states[key]);
+                            }
+                        }
+                    }
+                }
+                setTimeout(function () { this.tabPanel.setActiveTab(0); }.bind(this), 1500);
             }
-            for (let key in states) {
-                if (states.hasOwnProperty(key)) {
-                    for (let i = 0;i < this.filterControls.length;i++) {
-                        let typeName = (this.filterControls[i].inlineFilterButton.modelNames) || 'unknown';
-                        if (typeName === key) {
-                            let filterBtn = this.filterControls[i].inlineFilterButton;
-                            filterBtn.applyState(states[key]);
+            else {
+                this._clearAllFilters();
+            }
+        }
+    },
+
+    // On many apps, the multilevel filter replaces the original single inline filter
+    // control. Some users have saved views containing a filter state from this original
+    // filter. This method allows apps to try and apply those filters to the multilevel
+    // filter at the proper level in the porfolio hierarchy
+    mergeLegacyFilter: function (multiFilterStates, legacyFilterState, modelName) {
+        if (!this._isSubscriber() && multiFilterStates && legacyFilterState && modelName) {
+            for (let multiModel in multiFilterStates) {
+                if (multiFilterStates.hasOwnProperty(multiModel)) {
+                    if (multiModel === modelName) {
+                        try {
+                            let currentState = multiFilterStates[multiModel];
+                            if (legacyFilterState.matchType) {
+                                currentState.matchType = legacyFilterState.matchType;
+                            }
+                            if (typeof legacyFilterState.condition === 'string') {
+                                currentState.condition = legacyFilterState.condition;
+                            }
+                            if (legacyFilterState.quickFilters) {
+                                currentState.quickFilters = _.merge(currentState.quickFilters, legacyFilterState.quickFilters);
+                            }
+                            if (legacyFilterState.advancedFilters) {
+                                currentState.advancedFilters = _.merge(currentState.advancedFilters, legacyFilterState.advancedFilters);
+                            }
+                            if (legacyFilterState.quickFilterFields) {
+                                currentState.quickFilterFields = _.merge(currentState.quickFilterFields, legacyFilterState.quickFilterFields);
+                            }
+                        }
+                        catch (e) {
+                            console.error('Failed to merge legacy filter into multi-level filter');
                         }
                     }
                 }
             }
-            setTimeout(function () { this.tabPanel.setActiveTab(0); }.bind(this), 1500);
         }
     },
 
