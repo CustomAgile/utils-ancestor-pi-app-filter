@@ -293,7 +293,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         var appDefaults = this.cmp.defaultSettings;
         appDefaults['Utils.AncestorPiAppFilter.enableAncestorPiFilter2'] = false;
         appDefaults['Utils.AncestorPiAppFilter.projectScope'] = 'current';
-        appDefaults['Utils.AncestorPiAppFilter.enableMultiLevelPiFilter'] = false;
+        appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
         this.cmp.setDefaultSettings(appDefaults);
 
         Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
@@ -312,7 +312,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             success: function () {
                 Promise.all([this._addAncestorControls(), this._addFilters()]).then(
                     function () {
-                        this._setReady();
+                        setTimeout(function () { this._setReady(); }.bind(this), 500);
                     }.bind(this),
                     function (error) {
                         Rally.ui.notify.Notifier.showError({ message: error });
@@ -422,6 +422,11 @@ Ext.define('Utils.AncestorPiAppFilter', {
         let filters = [];
         let modelName = type.toLowerCase();
         let multiLevelFilters = this.getMultiLevelFilters();
+
+        if (!multiLevelFilters || !Object.keys(multiLevelFilters).length) {
+            return filters;
+        }
+
         let keys = this._getAllTypePaths();
         let currentLevelIndex = _.findIndex(keys, function (currentType) {
             return currentType.toLowerCase() === modelName;
@@ -943,6 +948,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }
         else {
             this.subscriberEventName = Rally.getApp().getAppId() + this.$className;
+
             // Subscribe to a channel dedicated to this app
             this.subscribe(this, this.subscriberEventName, function (data) {
                 if (this.intervalTimer) {
@@ -953,9 +959,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     this.isSubscriber = true;
                     this._hideControlCmp();
                 }
-                this.publishedValue = data;
 
-                if (this.ready) {
+                // We only want to refresh the app if we have all of the filters from the broadcaster
+                if (data.ready) {
+                    this.publishedValue = data;
                     // Default to an ancestor change event for backwards compatibility
                     if (data.changeType === 'ancestor' || !data.changeType) {
                         this._onSelect();
@@ -963,13 +970,27 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     else {
                         this._onChange();
                     }
+                } else {
+                    setTimeout(() => { this.publish('registerChangeSubscriber', this.subscriberEventName); }, 500);
                 }
             }, this);
+
             // Attempt to register with a publisher (if one exists)
             this.publish('registerChangeSubscriber', this.subscriberEventName);
-            this.intervalTimer = setInterval(function () {
-                this.publish('registerChangeSubscriber', this.subscriberEventName);
-            }.bind(this), 500);
+            this.registerAttempts = 0;
+            this.intervalTimer = setInterval(() => {
+                this.registerAttempts++;
+
+                // After 15 attempts, there probably isn't a broadcaster present, so delete the interval
+                if (this.registerAttempts >= 15) {
+                    clearInterval(this.intervalTimer);
+                    delete this.intervalTimer;
+                    delete this.registerAttempts;
+                }
+                else {
+                    this.publish('registerChangeSubscriber', this.subscriberEventName);
+                }
+            }, 500);
             this.subscribe(this, 'reRegisterChangeSubscriber', function () {
                 this.publish('registerChangeSubscriber', this.subscriberEventName);
             }, this);
@@ -1000,19 +1021,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
             result.filters = this.getMultiLevelFilters();
             result.filterStates = this.getMultiLevelFilterStates();
             result.wsapiFilters = this.getMultiLevelWsapiFilters();
+            result.ready = this.ready;
         }
         return result;
     },
 
     _setReady: function () {
-        this._updateReleaseValues();
-
         if (this._isSubscriber()) {
             if (this.tabPanel) {
                 this.tabPanel.hide();
             }
 
-            if (this._isSubscriber() && this.showFiltersBtn) {
+            if (this.showFiltersBtn) {
                 this.showFiltersBtn.hide();
             }
 
@@ -1024,9 +1044,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 setTimeout(function () {
                     this.ready = true;
                     this.fireEvent('ready', this);
-                }.bind(this), 800);
+                }.bind(this), 3000);
                 return;
             }
+        }
+        else {
+            this._updateReleaseValues();
         }
         this.ready = true;
         this.fireEvent('ready', this);
@@ -1050,6 +1073,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         var currentSettings = Rally.getApp().getSettings();
         if (!currentSettings.hasOwnProperty('Utils.AncestorPiAppFilter.projectScope')) {
             currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user';
+        }
+        if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
+            currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
         }
         var pluginSettingsFields = [{
             xtype: 'rallycheckboxfield',
