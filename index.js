@@ -107,7 +107,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.0",
+    version: "1.2.2",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -235,7 +235,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Array}
          * Field list for multi-level filter panel
          */
-        defaultFilterFields: ['Owner'],
+        defaultFilterFields: [],
 
         /**
          * @cfg {Boolean}
@@ -247,7 +247,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Boolean}
          * Set to true to hide advanced filters on load
          */
-        advancedFilterCollapsed: false
+        advancedFilterCollapsed: false,
+        /**
+         * @cfg {String}
+         * Pass a typePath to set that PI type as the default visible tab
+         */
+        visibleTab: undefined,
     },
     filterControls: [],
     portfolioItemTypes: [],
@@ -256,6 +261,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     isSubscriber: false,
     changeSubscribers: [],
     publishedValue: {},
+    defaultTab: 0,
 
     constructor: function () {
         this.callParent(arguments);
@@ -293,7 +299,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         var appDefaults = this.cmp.defaultSettings;
         appDefaults['Utils.AncestorPiAppFilter.enableAncestorPiFilter2'] = false;
         appDefaults['Utils.AncestorPiAppFilter.projectScope'] = 'current';
-        appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
+        appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = false;
         this.cmp.setDefaultSettings(appDefaults);
 
         Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
@@ -810,7 +816,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         }
                     }
                 }
-                setTimeout(function () { this.tabPanel.setActiveTab(0); }.bind(this), 1500);
+                setTimeout(function () { this.tabPanel.setActiveTab(this.defaultTab); }.bind(this), 1500);
             }
             else {
                 this._clearAllFilters();
@@ -1074,9 +1080,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         if (!currentSettings.hasOwnProperty('Utils.AncestorPiAppFilter.projectScope')) {
             currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user';
         }
-        if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
-            currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
-        }
+        // if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
+        //     currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
+        // }
         var pluginSettingsFields = [{
             xtype: 'rallycheckboxfield',
             id: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
@@ -1684,7 +1690,29 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                     advancedFilterRowsFlex = 2;
                                 }
 
+                                // If a default visible tab is specified, we need to convert an
+                                // artifact ordinal to a tab index
+                                // Tab indices start at 0 for top-most portfolio item
+                                // Artfiact ordinals start at -1 for user stories, 0 for Features, etc...
+                                let ordinalLookup = {};
+                                let modelLength = Object.keys(models).length;
+                                if (this.visibleTab) {
+                                    for (let i = 0; i < modelLength; i++) {
+                                        ordinalLookup[i] = modelLength - i - 1;
+                                    }
+                                }
+
                                 _.each(models, function (model, key) {
+                                    if (this.visibleTab && this.visibleTab.toLowerCase() === key.toLowerCase()) {
+                                        let ord = model.ordinal;
+                                        if (typeof ord === 'number') {
+                                            let newDefaultTab = ordinalLookup[ord + 1];
+                                            if (typeof newDefaultTab === 'number') {
+                                                this.defaultTab = newDefaultTab;
+                                            }
+                                        }
+                                    }
+
                                     promises.push(new Promise(function (newResolve) {
                                         let filterName = `inlineFilter${key}`;
                                         this.filterControls.push(Ext.create('Rally.ui.inlinefilter.InlineFilterControl', {
@@ -1754,7 +1782,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                         });
 
                                         this.btnRenderArea.add(this.clearAllButton);
-                                        this.tabPanel.setActiveTab(0);
+                                        this.tabPanel.setActiveTab(this.defaultTab);
                                         if (this.filtersHidden) {
                                             this.tabPanel.hide();
                                         }
