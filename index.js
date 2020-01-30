@@ -107,7 +107,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.2",
+    version: "1.2.3",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -672,6 +672,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
         if (filter) {
             if (filter.property) {
                 if (typeof filter.property === 'string') {
+                    if (filter.config && filter.property === filter.config.property) {
+                        filter.config.property = `${parentPrefix}.${filter.property}`;
+                    }
+                    if (filter.initialConfig && filter.property === filter.initialConfig.property) {
+                        filter.initialConfig.property = `${parentPrefix}.${filter.property}`;
+                    }
                     filter.property = `${parentPrefix}.${filter.property}`;
                 }
                 else {

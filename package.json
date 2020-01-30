@@ -1,6 +1,6 @@
 {
   "name": "@customagile/ancestor-pi-multi-level-pi-app-filter",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "A portfolio item ancestor filter and multi-level PI filter plugin",
   "main": "index.js",
   "scripts": {
