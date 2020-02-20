@@ -594,7 +594,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
                 // If filters on custom fields exist, lets get a list of IDs at that level and use those IDs as our filter
                 // This is to overcome an issue with missing indices in Rally's database causing timeouts
-                if (hasCustomFieldFilters) {
+                if (hasCustomFieldFilters && this.getIgnoreProjectScope()) {
                     let parentIDs = [];
                     try {
                         let currentLevelFilters = this._getWsapiFilter(parentType);
