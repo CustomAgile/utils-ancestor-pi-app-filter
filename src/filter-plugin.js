@@ -67,7 +67,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Array}
          * Whitelist array for inline filters
          */
-        whiteListFields: ['Tags', 'Milstones'],
+        whiteListFields: ['Tags', 'Milstones', 'c_EAEpic'],
 
         /**
          * @cfg {Array}
@@ -1725,7 +1725,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
     _clearAllFilters: function () {
         this.suspendEvents(false);
-        this.suspendLayouts();
 
         // The quick filters don't properly clear if the filter isn't displayed
         let activeTab = this.tabPanel.getActiveTab();
@@ -1733,7 +1732,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
         _.each(this.filterControls, function (filterControl) {
             try {
                 this.tabPanel.setActiveTab(filterControl.tab);
+                filterControl.inlineFilterButton.suspendEvents(false);
                 filterControl.inlineFilterButton.clearAllFilters();
+                filterControl.inlineFilterButton.saveState();
+                filterControl.inlineFilterButton.resumeEvents();
             }
             catch (e) {
                 console.log(e);
@@ -1741,15 +1743,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
         }.bind(this));
 
         this.tabPanel.setActiveTab(activeTab);
-
-        if (this.clearAllButton) {
-            this.clearAllButton.hide();
-        }
-
         this.resumeEvents();
-        this.resumeLayouts(false);
-        this.updateLayout();
-        this.fireEvent('change', this.getMultiLevelFilters());
+        this._onFilterChange();
     },
 
     _hasFilters: function () {
