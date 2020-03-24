@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.3",
+    version: "1.2.6",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -67,7 +67,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * @cfg {Array}
          * Whitelist array for inline filters
          */
-        whiteListFields: ['Tags', 'Milstones', 'c_EAEpic'],
+        whiteListFields: ['Tags', 'Milstones', 'c_EAEpic', 'DisplayColor'],
 
         /**
          * @cfg {Array}
@@ -360,6 +360,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 filters.push(childFilter);
             }
         }
+
         return filters;
     },
 
@@ -553,11 +554,33 @@ Ext.define('Utils.AncestorPiAppFilter', {
             }
         }
 
-        if (filter && parentPrefix) {
-            this._updateWsapiFilterWithPrefix(filter, parentPrefix);
+        if (filter) {
+            this._updateWsapiDisplayColorFilter(filter);
+            if (parentPrefix) {
+                this._updateWsapiFilterWithPrefix(filter, parentPrefix);
+            }
         }
 
         return filter ? [filter] : [];
+    },
+
+    // DisplayColor filter passes hex value as uppercase, but the web service needs
+    // hex values to be lowercase in order to work properly
+    _updateWsapiDisplayColorFilter: function (filter) {
+        if (filter) {
+            if (filter.property) {
+                if (typeof filter.property === 'object') {
+                    this._updateWsapiDisplayColorFilter(filter.property);
+                }
+            }
+
+            if (typeof filter.value === 'object') {
+                this._updateWsapiDisplayColorFilter(filter.value);
+            }
+            else if (typeof filter.value === 'string' && /^#[0-9a-f]{3,6}$/i.test(filter.value)) {
+                filter.value = filter.value.toLowerCase();
+            }
+        }
     },
 
     // Recursively traverse through a Rally WSAPI filter and apply the given prefix to all of the values
