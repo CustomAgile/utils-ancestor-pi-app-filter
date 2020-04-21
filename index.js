@@ -107,7 +107,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.6",
+    version: "1.2.7",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -140,9 +140,16 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
         /**
          * @cfg {Boolean}
-         * Set to false to prevent app from displaying a multi-level PI filter
+         * Set to true to show multilevel filter by default
          */
-        displayMultiLevelFilter: true,
+        displayMultiLevelFilter: false,
+
+        /**
+         * @cfg {String}
+         * Choose default setting for project scope
+         * Possible values: current, workspace, user
+         */
+        projectScope: 'current',
 
         /**
          * @cfg {Boolean}
@@ -298,8 +305,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // Extend app default settings fields
         var appDefaults = this.cmp.defaultSettings;
         appDefaults['Utils.AncestorPiAppFilter.enableAncestorPiFilter2'] = false;
-        appDefaults['Utils.AncestorPiAppFilter.projectScope'] = 'current';
-        appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = false;
+        appDefaults['Utils.AncestorPiAppFilter.projectScope'] = this.projectScope;
+        appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
         this.cmp.setDefaultSettings(appDefaults);
 
         Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
@@ -1109,9 +1116,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         if (!currentSettings.hasOwnProperty('Utils.AncestorPiAppFilter.projectScope')) {
             currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user';
         }
-        // if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
-        //     currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
-        // }
+        if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
+            currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
+        }
         var pluginSettingsFields = [{
             xtype: 'rallycheckboxfield',
             id: 'Utils.AncestorPiAppFilter.enableAncestorPiFilter2',
@@ -1269,7 +1276,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     xtype: 'container',
                     itemId: 'scopeControlArea',
                     id: 'scopeControlArea',
-                    width: 250,
+                    width: this._showIgnoreProjectScopeControl() ? 250 : 0,
+                    margin: this._showIgnoreProjectScopeControl() ? '0 10 0 0' : 0,
                     layout: {
                         type: 'hbox',
                         align: 'middle'
@@ -1285,7 +1293,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         displayField: 'text',
                         valueField: 'value',
                         labelStyle: this.labelStyle,
-                        labelWidth: ownerLabelWidth,
+                        labelWidth: this._showIgnoreProjectScopeControl() ? ownerLabelWidth : 0,
                         fieldLabel: scopeControlByItself ? this.ownerOnlyLabel : this.ownerLabel,
                         // Don't set initial value with this component or it will override the state
                         storeConfig: {
@@ -1659,18 +1667,16 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         this.showFiltersBtn = this.btnRenderArea.add(
                             {
                                 xtype: 'multifiltertogglebtn',
-                                cls: ' rly-small',
+                                cls: ` rly-small ${this.filtersHidden ? 'secondary' : 'primary'}`,
                                 handler: this._toggleFilters,
                                 scope: this,
                                 stateId: this.cmp.getContext().getScopedStateId(`multi-filter-toggle-button`),
                                 listeners: {
                                     added: function (btn) {
                                         if (btn.filtersHidden) {
-                                            btn.addCls('secondary');
                                             btn.setToolTipText('Show Filters');
                                         }
                                         else {
-                                            btn.addCls('primary');
                                             btn.setToolTipText('Hide Filters');
                                         }
                                     }

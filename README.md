@@ -175,6 +175,9 @@ to push the changes and tag to GitHub.
 2. `npm publish --access public` - This will publish the new version to npmjs.org
 3. Create the new release in [`utils_file-utils/releases'](https://github.com/RallyTechServices/utils_file-utils/releases)
 
+To Build
+1. `grunt concat` - This will combine all js source files into index.js
+
 ## Test Plan
 
 ### Settings
