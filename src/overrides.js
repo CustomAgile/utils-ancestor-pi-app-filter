@@ -21,3 +21,13 @@ Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
         return this.callParent(arguments);
     }
 });
+
+Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
+    // We don't want chevrons in the tab panel
+    _alignChevron: function () {
+        if (this.chevron) { this.chevron.hide(); }
+    },
+
+    // Don't create the close buttons
+    _createCloseButton: function () { }
+});

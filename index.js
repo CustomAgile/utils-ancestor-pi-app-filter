@@ -21,6 +21,16 @@ Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
         return this.callParent(arguments);
     }
 });
+
+Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
+    // We don't want chevrons in the tab panel
+    _alignChevron: function () {
+        if (this.chevron) { this.chevron.hide(); }
+    },
+
+    // Don't create the close buttons
+    _createCloseButton: function () { }
+});
 Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
     extend: 'Rally.ui.Button',
     alias: 'widget.multifiltertogglebtn',
@@ -149,7 +159,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * Choose default setting for project scope
          * Possible values: current, workspace, user
          */
-        projectScope: 'current',
+        projectScope: 'user',
 
         /**
          * @cfg {Boolean}
@@ -284,16 +294,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
     init: function (cmp) {
         this.cmp = cmp;
-
         this.cmp.on('resize', this._onCmpResize, this);
-
-        // Get the area where plugin controls will render
         this.renderArea = this.cmp.down('#' + this.renderAreaId);
-
-        // Get the area where filter button will render
         this.btnRenderArea = this.cmp.down('#' + this.btnRenderAreaId);
-
-        // Get the area where tabbed filter panel will render
         this.panelRenderArea = this.cmp.down('#' + this.panelRenderAreaId);
 
         // Extend app settings fields
@@ -308,16 +311,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
         appDefaults['Utils.AncestorPiAppFilter.projectScope'] = this.projectScope;
         appDefaults['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
         this.cmp.setDefaultSettings(appDefaults);
-
-        Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
-            // We don't want chevrons in the tab panel
-            _alignChevron: function () {
-                if (this.chevron) { this.chevron.hide(); }
-            },
-
-            // Don't create the close buttons
-            _createCloseButton: function () { }
-        });
 
         // Add the control components then fire ready
         this._getTypeDefinitions().then({
@@ -1114,7 +1107,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     _getSettingsFields: function (fields) {
         var currentSettings = Rally.getApp().getSettings();
         if (!currentSettings.hasOwnProperty('Utils.AncestorPiAppFilter.projectScope')) {
-            currentSettings['Utils.AncestorPiAppFilter.projectScope'] = 'user';
+            currentSettings['Utils.AncestorPiAppFilter.projectScope'] = this.projectScope;
         }
         if (!currentSettings.hasOwnProperty('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter')) {
             currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter'] = this.displayMultiLevelFilter;
@@ -1141,6 +1134,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             columns: 1,
             vertical: true,
             allowBlank: false,
+            name: 'Utils.AncestorPiAppFilter.projectScope',
             items: [{
                 boxLabel: "User's current project(s).",
                 name: 'Utils.AncestorPiAppFilter.projectScope',
@@ -1169,6 +1163,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             id: 'Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter',
             name: 'Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter',
             fieldLabel: 'Enable multi-level portfolio item filter',
+            value: currentSettings['Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter']
         }
         ];
         pluginSettingsFields = _.map(pluginSettingsFields, function (pluginSettingsField) {
@@ -1556,11 +1551,23 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _showAncestorFilter: function () {
-        return this.cmp.getSetting('Utils.AncestorPiAppFilter.enableAncestorPiFilter2');
+        let enableAncestorFilter = this.cmp.getSetting('Utils.AncestorPiAppFilter.enableAncestorPiFilter2');
+
+        if (enableAncestorFilter === undefined) {
+            return false;
+        }
+
+        return enableAncestorFilter;
     },
 
     _showIgnoreProjectScopeControl: function () {
-        return this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === 'user';
+        let showProjectScope = this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === 'user';
+
+        if (showProjectScope === undefined) {
+            return this.projectScope;
+        }
+
+        return;
     },
 
     _ignoreProjectScope: function () {
@@ -1573,8 +1580,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // If the control is shown, that values overrides the ignoreScope app setting
             result = this.renderArea.down('#ignoreScopeControl').getValue();
         }
-        else if (this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === 'workspace') {
-            result = true;
+        else if (this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === undefined) {
+            result = this.projectScope === 'workspace';
         }
         return result;
     },
@@ -1655,7 +1662,13 @@ Ext.define('Utils.AncestorPiAppFilter', {
         Multi-Level Filter functions
     */
     _showMultiLevelFilter: function () {
-        return this.cmp.getSetting('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter');
+        let showFilters = this.cmp.getSetting('Utils.MultiLevelPiAppFilter.enableMultiLevelPiFilter');
+
+        if (showFilters === undefined) {
+            return this.displayMultiLevelFilter;
+        }
+
+        return showFilters;
     },
 
     _addFilters: function () {
