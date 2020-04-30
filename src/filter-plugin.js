@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.7",
+    version: "1.2.8",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -1450,7 +1450,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             return this.projectScope;
         }
 
-        return;
+        return showProjectScope;
     },
 
     _ignoreProjectScope: function () {
