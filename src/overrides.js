@@ -1,5 +1,5 @@
 Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
-    _getBaseEditorConfig: function (fieldDef, context, model) {
+    _getBaseEditorConfig: function (fieldDef, context) {
         if (fieldDef.name === "CreatedBy") {
             let editorConfig = {
                 xtype: "rallyusersearchcombobox",

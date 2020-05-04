@@ -1,5 +1,5 @@
 Ext.override(Rally.ui.inlinefilter.FilterFieldFactory, {
-    _getBaseEditorConfig: function (fieldDef, context, model) {
+    _getBaseEditorConfig: function (fieldDef, context) {
         if (fieldDef.name === "CreatedBy") {
             let editorConfig = {
                 xtype: "rallyusersearchcombobox",
@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.8",
+    version: "1.2.9",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -321,13 +321,13 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         setTimeout(function () { this._setReady(); }.bind(this), 500);
                     }.bind(this),
                     function (error) {
-                        Rally.ui.notify.Notifier.showError({ message: error });
+                        this._showError(error, 'Failed while adding ancestor and multilevel filters');
                         this._setReady();
                     }.bind(this)
                 );
             },
             failure: function () {
-                Rally.ui.notify.Notifier.showError({ message: 'Failed to fetch portfolio item types for multi-level filter' });
+                this._showError('Failed to fetch portfolio item types for multi-level filter');
             }
         });
     },
@@ -462,9 +462,9 @@ Ext.define('Utils.AncestorPiAppFilter', {
         // below the given type (e.g. a timeline app). Otherwise if being used for an app
         // that only displays one PI type, we need to include those lower filters
         if (includeFiltersBelowType && Ext.String.startsWith(type.toLowerCase(), 'portfolioitem')) {
-            let childFilter = await this._getChildFiltersForType(type, multiLevelFilters);
-            if (childFilter) {
-                filters.push(childFilter);
+            let childFilters = this._getChildFiltersForType(type);
+            if (childFilters) {
+                filters = filters.concat(childFilters);
             }
         }
 
@@ -510,70 +510,25 @@ Ext.define('Utils.AncestorPiAppFilter', {
         return filters;
     },
 
-    // Starting at the lowest PI type, get a list of IDs that fit the given filter. 
-    // Traverse up the PI hierarchy until reaching the given type and return a list of IDs
-    // for that type that fit all filters from below
-    // Returns an array of object IDs
-    _getChildFiltersForType: async function (type, filters) {
-        let idFilter;
+    // Return array of filters for all child levels below given type prefixed 
+    // appropriately to filter at the given type
+    _getChildFiltersForType: function (type) {
         let types = this._getAllTypePaths();
+        let childProperty = '';
+        let childFilters = [];
 
-        // PI types are in order lowest to highest
-        for (let i = 0; i < types.length; i++) {
+        let startIndex = _.findIndex(types, function (t) {
+            return t.toLowerCase() === type.toLowerCase();
+        });
+
+        // Types are in order lowest to highest
+        for (let i = startIndex - 1; i >= 0; i--) {
             let currentType = types[i];
-
-            if (currentType.toLowerCase() === type.toLowerCase()) {
-                break;
-            }
-
-            // If this PI type has filters, get the Wsapi representation of it (this accounts for custom match conditions)
-            let currentFilter = filters[currentType] ? this._getWsapiFilter(currentType) : [];
-
-            if ((currentFilter && currentFilter.length) || idFilter) {
-                if (idFilter) {
-                    currentFilter.push(idFilter);
-                }
-
-                // To reduce the number of results returned, we include filters of higher level PI types
-                for (let j = i + 1; j < types.length; j++) {
-                    let parentType = types[j];
-                    let parentFilters = filters[parentType];
-
-                    if (parentFilters && parentFilters.length) {
-                        let parentFiltersForType = await this._getParentFilters(currentType, parentType, parentFilters);
-                        currentFilter = currentFilter.concat(parentFiltersForType);
-                    }
-                }
-
-                let records = await new Promise(function (resolve, reject) {
-                    this._getFilteredRecords(currentFilter, currentType, resolve, reject);
-                }.bind(this)).catch((e) => {
-                    Rally.ui.notify.Notifier.showError({ message: e });
-                    return [];
-                });
-
-                if (records.length) {
-                    let parents = _.map(records, function (id) {
-                        return (id.get('Parent') && id.get('Parent').ObjectID) ||
-                            (id.get('Feature') && id.get('Feature').ObjectID) || 0;
-                    });
-
-                    idFilter = new Rally.data.wsapi.Filter({
-                        property: 'ObjectID',
-                        operator: 'in',
-                        value: _.uniq(parents)
-                    });
-                }
-                else {
-                    idFilter = new Rally.data.wsapi.Filter({
-                        property: 'ObjectID',
-                        operator: '=',
-                        value: 0
-                    });
-                }
-            }
+            childProperty = childProperty + (childProperty.length ? '.' : '') + (currentType.toLowerCase() === 'hierarchicalrequirement' ? 'UserStories' : 'Children');
+            childFilters = childFilters.concat(this._getWsapiFilter(currentType, childProperty));
         }
-        return idFilter;
+
+        return childFilters;
     },
 
     // Given a type, a parent type and array of parent filters, convert the filters
@@ -600,8 +555,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                     try {
                         let currentLevelFilters = this._getWsapiFilter(parentType);
                         parentIDs = await new Promise(function (resolve, reject) { this._getFilteredRecords(currentLevelFilters, parentType, resolve, reject); }.bind(this)).catch((e) => {
-                            Rally.ui.notify.Notifier.showError({ message: e });
-                            return emptyFilter;
+                            this._showError(e, 'Failed while loading filters for parent artifacts');
+                            return [];
                         });
 
                         if (parentIDs && parentIDs.length) {
@@ -616,7 +571,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         }
                     }
                     catch (e) {
-                        Rally.ui.notify.Notifier.showError({ message: e });
+                        this._showError(e, 'Failed while loading filters for parent artifacts');
                         return emptyFilter;
                     }
                 }
@@ -845,7 +800,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         }
                     }
                 }
-                setTimeout(function () { this.tabPanel.setActiveTab(this.defaultTab); }.bind(this), 1500);
+                setTimeout(function () { this.tabPanel && this.tabPanel.setActiveTab(this.defaultTab); }.bind(this), 1500);
             }
             else {
                 this._clearAllFilters();
@@ -1625,8 +1580,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     /**
-     * Return a list of artifact types AT or below the selected artifact type,
-     * that are an ancestor of the given model, or null if there are no pi type
+     * Return a list of artifact types AT or below selectedPiTypePath,
+     * that are an ancestor of the given modelName, or null if there are no pi type
      * ancestors for the given model.
      */
     _getAncestorTypeArray: function (modelName, selectedPiTypePath) {
@@ -2046,6 +2001,34 @@ Ext.define('Utils.AncestorPiAppFilter', {
      },
  
      */
+
+    _showError(msg, defaultMessage) {
+        Rally.ui.notify.Notifier.showError({ message: this.parseError(msg, defaultMessage) });
+    },
+
+    parseError(e, defaultMessage) {
+        defaultMessage = defaultMessage || 'An unknown error has occurred';
+
+        if (typeof e === 'string' && e.length) {
+            return e;
+        }
+        if (e.message && e.message.length) {
+            return e.message;
+        }
+        if (e.exception && e.error && e.error.errors && e.error.errors.length) {
+            if (e.error.errors[0].length) {
+                return e.error.errors[0];
+            } else {
+                if (e.error && e.error.response && e.error.response.status) {
+                    return `${defaultMessage} (Status ${e.error.response.status})`;
+                }
+            }
+        }
+        if (e.exceptions && e.exceptions.length && e.exceptions[0].error) {
+            return e.exceptions[0].error.statusText;
+        }
+        return defaultMessage;
+    },
 
     onHelpClicked() {
         Ext.create('Rally.ui.dialog.Dialog', {
