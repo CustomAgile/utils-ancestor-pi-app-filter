@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.10",
+    version: "1.2.11",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -786,6 +786,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     setMultiLevelFilterStates: function (states) {
         if (!this._isSubscriber()) {
             if (states) {
+                this.suspendEvents(false);
                 if (this.tabPanel) {
                     this.tabPanel.removeAll();
                 }
@@ -795,12 +796,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
                             let typeName = (this.filterControls[i].inlineFilterButton.modelNames) || 'unknown';
                             if (typeName === key) {
                                 let filterBtn = this.filterControls[i].inlineFilterButton;
+                                // filterBtn.suspendEvents(false);
                                 filterBtn.applyState(states[key]);
+                                // filterBtn.resumeEvents();
                             }
                         }
                     }
                 }
-                setTimeout(function () { this.tabPanel && this.tabPanel.setActiveTab(this.defaultTab); }.bind(this), 1500);
+                setTimeout(function () {
+                    this.resumeEvents();
+                    this.tabPanel && this.tabPanel.setActiveTab(this.defaultTab);
+                    this._onChange();
+                }.bind(this), 1500);
             }
             else {
                 this._clearAllFilters();
