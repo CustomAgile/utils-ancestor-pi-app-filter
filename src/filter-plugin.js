@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.9",
+    version: "1.2.10",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -695,7 +695,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     // control. Some users have saved views containing a filter state from this original
     // filter. This method allows apps to try and apply those filters to the multilevel
     // filter at the proper level in the porfolio hierarchy
-    mergeLegacyFilter: function (multiFilterStates, legacyFilterState, modelName) {
+    mergeLegacyFilter: function (multiFilterStates, legacyFilterState, modelName, setState) {
         if (!this._isSubscriber() && multiFilterStates && legacyFilterState && modelName) {
             for (let multiModel in multiFilterStates) {
                 if (multiFilterStates.hasOwnProperty(multiModel)) {
@@ -709,6 +709,11 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                 currentState.condition = legacyFilterState.condition;
                             }
                             if (legacyFilterState.quickFilters) {
+                                if (legacyFilterState.quickFilterFields && !legacyFilterState.quickFilterFields.length) {
+                                    for (let qFilter of legacyFilterState.quickFilters) {
+                                        legacyFilterState.quickFilterFields.push(qFilter.name);
+                                    }
+                                }
                                 currentState.quickFilters = _.merge(currentState.quickFilters, legacyFilterState.quickFilters);
                             }
                             if (legacyFilterState.advancedFilters) {
@@ -723,6 +728,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
                         }
                     }
                 }
+            }
+
+            if (setState) {
+                this.setMultiLevelFilterStates(multiFilterStates);
             }
         }
     },
@@ -1421,6 +1430,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
         else if (this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === undefined) {
             result = this.projectScope === 'workspace';
         }
+        else if (this.cmp.getSetting('Utils.AncestorPiAppFilter.projectScope') === 'workspace') {
+            result = true;
+        }
+
         return result;
     },
 
