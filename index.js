@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.11",
+    version: "1.2.12",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -270,6 +270,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * Pass a typePath to set that PI type as the default visible tab
          */
         visibleTab: undefined,
+
+        /**
+         * @cfg {Boolean}
+         * Set to true to prevent user from scoping app across the workspace
+         * */
+        disableGlobalScope: false
     },
     filterControls: [],
     portfolioItemTypes: [],
@@ -726,7 +732,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     getIgnoreProjectScope: function () {
-        return this._getValue().ignoreProjectScope;
+        return !this.disableGlobalScope && this._getValue().ignoreProjectScope;
     },
 
     getCurrentView: function () {
@@ -1110,17 +1116,19 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 boxLabel: "User's current project(s).",
                 name: 'Utils.AncestorPiAppFilter.projectScope',
                 inputValue: 'current',
-                checked: 'current' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
+                checked: 'current' === currentSettings['Utils.AncestorPiAppFilter.projectScope'] || this.disableGlobalScope
             }, {
                 boxLabel: "All projects in workspace.",
                 name: 'Utils.AncestorPiAppFilter.projectScope',
                 inputValue: 'workspace',
-                checked: 'workspace' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
+                checked: 'workspace' === currentSettings['Utils.AncestorPiAppFilter.projectScope'] && !this.disableGlobalScope,
+                disabled: this.disableGlobalScope
             }, {
                 boxLabel: 'User selectable (either current project(s) or all projects in workspace).',
                 name: 'Utils.AncestorPiAppFilter.projectScope',
                 inputValue: 'user',
-                checked: 'user' === currentSettings['Utils.AncestorPiAppFilter.projectScope']
+                checked: 'user' === currentSettings['Utils.AncestorPiAppFilter.projectScope'] && !this.disableGlobalScope,
+                disabled: this.disableGlobalScope
             },],
             listeners: {
                 scope: this,
