@@ -30,10 +30,7 @@
 }
 
 .filter-help { 
-  left: auto !important;
-  margin-top: 0;
   border-color: #d6d6d6 !important;
-  right: 10px !important;
 }
 
 .icon-help {

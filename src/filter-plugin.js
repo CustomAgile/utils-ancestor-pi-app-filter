@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.12",
+    version: "1.2.13",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -72,9 +72,16 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
         /**
          * @cfg {Array}
-         * Whitelist array for inline filters
+         * Whitelist array for inline filters. Used if app fails to retrieve global
+         * whitelist or overrideGlobalWhitelist is set to true
          */
-        whiteListFields: ['Tags', 'Milstones', 'c_EAEpic', 'DisplayColor'],
+        whiteListFields: ['Tags', 'Milestones', 'c_EAEpic', 'DisplayColor'],
+
+        /**
+         * @cfg {Boolean}
+         * Set to true to specify custom whitelist array
+         */
+        overrideGlobalWhitelist: false,
 
         /**
          * @cfg {Array}
@@ -202,23 +209,63 @@ Ext.define('Utils.AncestorPiAppFilter', {
         this.cmp.setDefaultSettings(appDefaults);
 
         // Add the control components then fire ready
-        this._getTypeDefinitions().then({
+        this._getGlobalWhitelist().then({
             scope: this,
-            success: function () {
-                Promise.all([this._addAncestorControls(), this._addFilters()]).then(
-                    function () {
-                        setTimeout(function () { this._setReady(); }.bind(this), 500);
-                    }.bind(this),
-                    function (error) {
-                        this._showError(error, 'Failed while adding ancestor and multilevel filters');
-                        this._setReady();
-                    }.bind(this)
-                );
-            },
-            failure: function () {
-                this._showError('Failed to fetch portfolio item types for multi-level filter');
+            success: function (whitelist) {
+                this.whiteListFields = whitelist;
+
+                this._getTypeDefinitions().then({
+                    scope: this,
+                    success: function () {
+                        Promise.all([this._addAncestorControls(), this._addFilters()]).then(
+                            function () {
+                                setTimeout(function () { this._setReady(); }.bind(this), 500);
+                            }.bind(this),
+                            function (error) {
+                                this._showError(error, 'Failed while adding ancestor and multilevel filters');
+                                this._setReady();
+                            }.bind(this)
+                        );
+                    },
+                    failure: function () {
+                        this._showError('Failed to fetch portfolio item types for multi-level filter');
+                    }
+                });
             }
         });
+    },
+
+    // Attempt to load preference object specifying list of fields to whitelist
+    _getGlobalWhitelist: function () {
+        let def = Ext.create('Deft.Deferred');
+        let prefName = 'multi-level-filter-whitelist-fields-preference-' + this.cmp.getContext().getWorkspaceRef();
+        if (this.overrideGlobalWhitelist) {
+            def.resolve(this.whiteListFields);
+        }
+
+        Rally.data.PreferenceManager.load({
+            filterByName: prefName,
+            success: function (pref) {
+                if (pref && pref.hasOwnProperty(prefName)) {
+                    try {
+                        let fields = pref[prefName].split(',');
+                        if (fields && fields.length) {
+                            def.resolve(fields);
+                        }
+                        else {
+                            def.resolve(this.whiteListFields);
+                        }
+                    }
+                    catch (e) {
+                        def.resolve(this.whiteListFields);
+                    }
+                }
+                else {
+                    def.resolve(this.whiteListFields);
+                }
+            }
+        });
+        return def.promise;
     },
 
     _getTypeDefinitions: function () {
@@ -1178,15 +1225,17 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // Without this, the components are clipped on narrow windows
             this.renderArea.setOverflowXY('auto', 'auto');
             this.renderArea.add(controls);
-            this.renderArea.add({
-                xtype: 'rallybutton',
+            let helpBtn = Ext.widget('rallybutton', {
                 itemId: 'filterHelpBtn',
+                floating: true,
+                shadow: false,
                 cls: 'filter-help',
                 iconOnly: true,
                 iconCls: 'icon-help',
                 hidden: this._isSubscriber() || !this._showMultiLevelFilter(),
                 handler: (...args) => this.onHelpClicked(...args)
             });
+            helpBtn.showBy(this.renderArea, 'tr-tr', [0, 7]);
         }
 
         this._addTooltips();
