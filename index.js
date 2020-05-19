@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.14",
+    version: "1.2.15",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -358,6 +358,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
         let prefName = 'multi-level-filter-whitelist-fields-preference-' + this.cmp.getContext().getWorkspaceRef();
         if (this.overrideGlobalWhitelist) {
             def.resolve(this.whiteListFields);
+            return def.promise;
         }
 
         Rally.data.PreferenceManager.load({
