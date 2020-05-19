@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.13",
+    version: "1.2.14",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -1095,8 +1095,8 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 this.showFiltersBtn.hide();
             }
 
-            if (this.renderArea.down('#filterHelpBtn')) {
-                this.renderArea.down('#filterHelpBtn').hide();
+            if (this.filterHelpBtn) {
+                this.filterHelpBtn.hide();
             }
 
             if (!this.publishedValue.filters) {
@@ -1125,6 +1125,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
     _onChange: function () {
         if (this.ready) {
             this.fireEvent('change', this.getMultiLevelFilters());
+        }
+    },
+
+    hideHelpButton: function () {
+        if (this.filterHelpBtn) {
+            this.filterHelpBtn.hide();
+        }
+    },
+
+    showHelpButton: function () {
+        if (this.filterHelpBtn) {
+            this.filterHelpBtn.show();
         }
     },
 
@@ -1342,7 +1354,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
             // Without this, the components are clipped on narrow windows
             this.renderArea.setOverflowXY('auto', 'auto');
             this.renderArea.add(controls);
-            let helpBtn = Ext.widget('rallybutton', {
+            this.filterHelpBtn = Ext.widget('rallybutton', {
                 itemId: 'filterHelpBtn',
                 floating: true,
                 shadow: false,
@@ -1352,7 +1364,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 hidden: this._isSubscriber() || !this._showMultiLevelFilter(),
                 handler: (...args) => this.onHelpClicked(...args)
             });
-            helpBtn.showBy(this.renderArea, 'tr-tr', [0, 7]);
+            this.filterHelpBtn.showBy(this.renderArea, 'tr-tr', [0, 7]);
         }
 
         this._addTooltips();
