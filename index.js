@@ -117,7 +117,7 @@ multiFilterHelpHtml = `
         `;
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.15",
+    version: "1.2.16",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -1087,6 +1087,18 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     _setReady: function () {
+        // Hide floating components because of course they are still visible when settings menu is shown
+        this.cmp.on('beforehide', () => {
+            if (this.filterHelpBtn) {
+                this.filterHelpBtn.hide();
+            }
+        });
+        this.cmp.on('beforeshow', () => {
+            if (this.filterHelpBtn) {
+                this.filterHelpBtn.show();
+            }
+        });
+
         if (this._isSubscriber()) {
             if (this.tabPanel) {
                 this.tabPanel.hide();
