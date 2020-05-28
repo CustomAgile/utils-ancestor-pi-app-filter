@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.2.16",
+    version: "1.3.1",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -982,6 +982,10 @@ Ext.define('Utils.AncestorPiAppFilter', {
             }
         });
 
+        if (!this._showMultiLevelFilter() && this.filterHelpBtn) {
+            this.filterHelpBtn.hide();
+        }
+
         if (this._isSubscriber()) {
             if (this.tabPanel) {
                 this.tabPanel.hide();
@@ -1625,7 +1629,12 @@ Ext.define('Utils.AncestorPiAppFilter', {
                                 scope: this,
                                 stateId: this.cmp.getContext().getScopedStateId(`multi-filter-toggle-button`),
                                 listeners: {
+                                    scope: this,
                                     added: function (btn) {
+                                        if (this.filtersHidden) {
+                                            btn.setFiltersHidden(true);
+                                        }
+
                                         if (btn.filtersHidden) {
                                             btn.setToolTipText('Show Filters');
                                         }
@@ -1646,6 +1655,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
                                 this.tabPanel = this.panelRenderArea.add({
                                     xtype: 'tabpanel',
+                                    itemId: 'multiLevelFilterTabPanel',
                                     width: '98%',
                                     cls: 'blue-tabs',
                                     minTabWidth: 100,
@@ -2016,20 +2026,6 @@ Ext.define('Utils.AncestorPiAppFilter', {
     },
 
     onHelpClicked() {
-        Ext.create('Rally.ui.dialog.Dialog', {
-            autoShow: true,
-            layout: 'fit',
-            width: '80%',
-            height: '90%',
-            closable: true,
-            autoDestroy: true,
-            autoScroll: true,
-            title: 'Using The Multi-Level Filter',
-            items: {
-                xtype: 'component',
-                html: multiFilterHelpHtml,
-                padding: 15
-            }
-        });
+        CustomAgile.ui.tutorial.MultiLevelFilterTutorial.showWelcomeDialog(this);
     }
 });

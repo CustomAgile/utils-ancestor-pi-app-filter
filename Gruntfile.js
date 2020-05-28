@@ -8,8 +8,7 @@ module.exports = function (grunt) {
                 src: [
                     "src/overrides.js",
                     "src/toggle-button.js",
-                    "src/images.js",
-                    "src/help-text.js",
+                    "src/tutorial.js",
                     "src/filter-plugin.js"
                 ],
                 dest: 'index.js',
