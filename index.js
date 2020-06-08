@@ -31,6 +31,65 @@ Ext.override(Rally.ui.inlinefilter.InlineFilterPanel, {
     // Don't create the close buttons
     _createCloseButton: function () { }
 });
+
+Ext.override(Ext.form.field.ComboBox, {
+    select: function (r) {
+        if (r && !r.get('ObjectID') && r.get('_uuidRef') === '/allowedattributevalue/') {
+            return;
+        }
+        this.callParent(arguments);
+    }
+});
+
+Ext.override(Rally.ui.inlinefilter.QuickFilterPanel, {
+    getFilters: function () {
+        var filters = [];
+        _.each(this.fields, function (field, index) {
+            if (field.name === 'ModelType') {
+                return;
+            }
+
+            if (!Ext.isEmpty(field.lastValue) && !field.hasActiveError()) {
+
+                var lastValue = field.lastValue;
+
+                var isRefUri = Rally.util.Ref.isRefUri(lastValue);
+                var isRefOid = _.isNumber(Rally.util.Ref.getOidFromRef(lastValue));
+                if (isRefUri && isRefOid && field.valueField === '_ref' && field.noEntryValue !== lastValue) {
+                    var record = field.getRecord();
+                    if (record) {
+                        var uuidRef = record.get('_uuidRef');
+                        if (uuidRef) {
+                            lastValue = uuidRef;
+                        }
+                    }
+                }
+
+                var filter = _.isFunction(field.getFilter) ? field.getFilter() : Rally.data.wsapi.Filter.fromExtFilter({
+                    property: field.name,
+                    operator: field.operator,
+                    value: lastValue
+                });
+
+                if (filter && filter.value !== '/allowedattributevalue/') {
+
+                    if (field.allowNoEntry && field.noEntryValue === lastValue) {
+                        filter.value = null;
+                    }
+
+                    Ext.apply(filter, {
+                        name: field.name,
+                        rawValue: lastValue,
+                        filterIndex: index + 1
+                    });
+
+                    filters.push(filter);
+                }
+            }
+        }, this);
+        return filters;
+    }
+});
 Ext.define('CustomAgile.multilevelfilter.ToggleButton', {
     extend: 'Rally.ui.Button',
     alias: 'widget.multifiltertogglebtn',
@@ -372,7 +431,7 @@ Ext.define('CustomAgile.ui.tutorial.MultiLevelFilterTutorial', {
 });
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.3.1",
+    version: "1.3.2",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -1636,7 +1695,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 hidden: this._isSubscriber() || !this._showMultiLevelFilter(),
                 handler: (...args) => this.onHelpClicked(...args)
             });
-            this.filterHelpBtn.showBy(this.renderArea, 'tr-tr', [0, 7]);
+            this.filterHelpBtn.showBy(this.renderArea, 'tr-tr', [-4, 5]);
         }
 
         this._addTooltips();

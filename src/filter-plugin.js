@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.3.1",
+    version: "1.3.2",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -1264,7 +1264,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
                 hidden: this._isSubscriber() || !this._showMultiLevelFilter(),
                 handler: (...args) => this.onHelpClicked(...args)
             });
-            this.filterHelpBtn.showBy(this.renderArea, 'tr-tr', [0, 7]);
+            this.filterHelpBtn.showBy(this.renderArea, 'tr-tr', [-4, 5]);
         }
 
         this._addTooltips();
