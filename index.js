@@ -431,7 +431,7 @@ Ext.define('CustomAgile.ui.tutorial.MultiLevelFilterTutorial', {
 });
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.3.2",
+    version: "1.3.3",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -506,7 +506,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
          * Whitelist array for inline filters. Used if app fails to retrieve global
          * whitelist or overrideGlobalWhitelist is set to true
          */
-        whiteListFields: ['Tags', 'Milestones', 'c_EAEpic', 'DisplayColor'],
+        whiteListFields: ['Tags', 'Milestones', 'c_EAEpic', 'c_EnterpriseApprovalEA', 'DisplayColor'],
 
         /**
          * @cfg {Boolean}
