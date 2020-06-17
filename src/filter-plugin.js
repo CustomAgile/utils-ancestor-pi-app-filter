@@ -1,6 +1,6 @@
 Ext.define('Utils.AncestorPiAppFilter', {
     alias: 'plugin.UtilsAncestorPiAppFilter',
-    version: "1.3.3",
+    version: "1.3.4",
     mixins: [
         'Ext.AbstractPlugin',
         'Rally.Messageable'
@@ -246,6 +246,7 @@ Ext.define('Utils.AncestorPiAppFilter', {
 
         Rally.data.PreferenceManager.load({
             filterByName: prefName,
+            scope: this,
             success: function (pref) {
                 if (pref && pref.hasOwnProperty(prefName)) {
                     try {
